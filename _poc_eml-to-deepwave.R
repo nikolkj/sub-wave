@@ -116,7 +116,7 @@ dat.body = str_replace_all(string = dat.body,
                           replacement = " ") %>% 
   trimws()
 
-writeLines(text = dat.body, con = "test.txt") # test
+  # writeLines(text = dat.body, con = "test.txt") # test
 
 
 # >>> Convert hexidecimal to UTF-8
@@ -162,7 +162,7 @@ dat.body = str_squish(dat.body) # clean-up whitespace
 missing_punct = grep("[[:punct:]]$", dat.body, invert = TRUE)
 dat.body[missing_punct] = paste0(dat.body[missing_punct], ".")
 
-# writeLines(text = dat.body, con = "test.txt")
+  # writeLines(text = dat.body, con = "test.txt")
 rm(missing_punct)
 
 # Create Initial Blocks ----
@@ -174,10 +174,8 @@ dat.body = str_split(string = dat.body,
                      pattern = "[.?!]+\\s+", simplify = T) %>%
   unlist()
 
-# dat.body = paste0(dat.body, dat.body_punct)
-  
 dat.body = c(paste0(dat.body[-length(dat.body)], dat.body_punct), 
-             dat.body[-length(dat.body)] # retained final punctuation
+             dat.body[length(dat.body)] # retained final punctuation
              )
 
 dat.body = trimws(dat.body)
