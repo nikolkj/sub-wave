@@ -1,0 +1,246 @@
+# ABOUT: Parse EML files and convert to SSML
+#
+# Deepwave API Limits:
+# * Total characters per request: 5,000
+# * Requests per minute: 300
+# * Characters per minute: 150,000
+# --
+# THEREFORE
+# ... input has to chunked into blocks of <5K characters, including SSML 
+# .... and input has to throttled to 500 blocks per minute
+
+# Start Up ----
+rm(list = ls());
+require(tidyverse)
+require(magrittr)
+
+# Inventory Input Queue ---- 
+# TBD 
+
+# sample raw input (temp)
+dat = readLines(con = "input-test/America's crumbling roads and bridges are fine.eml", warn = FALSE) 
+
+# Extract EML Body ----
+# pull email body
+content_boundary.raw = grep(pattern = "Content-Type: multipart/alternative; boundary=",
+                            x = dat, value = TRUE) %>% 
+  str_remove(string = ., pattern = "Content-Type: multipart/alternative; boundary=") %>%
+  str_remove_all(string = ., pattern = "\"")
+
+dat.body_bounds = grep(pattern = content_boundary.raw, 
+                       x = dat, value = FALSE)
+
+dat.body_raw = dat[dat.body_bounds[2]:dat.body_bounds[3]] # grab everything between boundary lines
+dat.body_raw = dat.body_raw[-c(1, length(dat.body_raw))] # drop boundary lines
+
+# remove body header
+dat.body_raw = dat.body_raw[-grep(pattern = "^Content-Type: text/plain",
+                                  x = dat.body_raw)[1]]
+dat.body_raw = dat.body_raw[-grep(pattern = "^Mime-Version:",
+                                  x = dat.body_raw)[1]]
+dat.body_raw = dat.body_raw[-grep(pattern = "^Content-Transfer-Encoding: quoted-printable",
+                                  x = dat.body_raw)[1]]
+# remove body footer
+dat.footer_min1 = which(dat.body_raw == "") # find possible start points
+dat.footer_min2 = grep(pattern = "(?i)^unsubscribe", # find confirmation points
+                       x = dat.body_raw)
+dat.footer_min = max(intersect(dat.footer_min1, # match footer criteria
+                               (dat.footer_min2-1)
+                               )
+                     )
+
+  # did we find the footer? 
+  assertthat::assert_that(is.numeric(dat.footer_min), 
+                          length(dat.footer_min) == 1
+                          )
+  
+dat.body_raw = dat.body_raw[-c(dat.footer_min:length(dat.body_raw))] # remove 
+  
+# clean-up
+rm(dat, content_boundary.raw, dat.body_bounds,
+   dat.footer_min, dat.footer_min1, dat.footer_min2)
+
+# unique body id, used for batch processing
+eml_digest = digest::digest(object = dat.body_raw, serialize = TRUE, algo = "md5")
+
+
+# EML Preprocesing ----
+
+# >>> merge run-on lines
+# body_line_max = max(nchar(dat.body_raw)) # doesn't work, exceptions exist
+  # ... e.g. one line at 78 characters ending in "=20"
+body_line_max = nchar(dat.body_raw) %>% 
+  plyr::count() %>% 
+  filter(freq == max(freq)) %$% x
+
+# truncate to consensus length
+dat.body_raw = substr(x = dat.body_raw, start = 1, stop = body_line_max) 
+
+# find run-on lines
+# ...definition:
+# .... 1) number of characters equals "body_line_max" (?)
+# .... 2) line ends in "="
+dat.body_runon = which(nchar(dat.body_raw) == body_line_max) # body message max-length
+dat.body_runon = intersect(dat.body_runon, grep("=$", dat.body_raw))
+dat.body_runon = grep("=$", trimws(dat.body_raw))
+
+dat.body = rep("", length(dat.body_raw))
+j = 1
+for(i in seq_along(dat.body_raw)){
+  if((i-1) %in% dat.body_runon){
+    j = j - 1 # step-backward
+    
+    # break
+    dat.body[j] = paste0(sub("=$", "", dat.body[j]), # lazy, excessive
+                        sub("=$", "", dat.body_raw[i])
+                        )
+    j = j + 1 # step-forward
+    
+  }else{
+    # accept as-is
+    dat.body[j] = dat.body_raw[i]
+    j = j + 1 # itterate forward
+    
+  } 
+  
+}
+
+dat.body = dat.body[dat.body !=  ""] # drop empty elements
+
+# >>> Remove embedded links
+dat.body = str_remove_all(string = dat.body, 
+                          pattern = "\\[https://.*\\]") 
+
+dat.body = str_replace_all(string = dat.body, 
+                          pattern = "https://.*($|\\s)", # lazy, excessive
+                          replacement = " ") %>% 
+  trimws()
+
+writeLines(text = dat.body, con = "test.txt") # test
+
+
+# >>> Convert hexidecimal to UTF-8
+# load punctuation reference table
+ref = readxl::read_excel(path = "unicode-hexstring_general-punct.xlsx")
+ref = ref %>% janitor::clean_names() %>%
+  select(character, utf_8_hex)
+
+dat.body_hex = lapply(dat.body, function(x){
+  str_extract_all(string = x, 
+                  pattern = "(=[[:alnum:]]{2})+", simplify = TRUE)
+})
+
+# create small translation table
+body_hex.translate = dat.body_hex %>% unlist() %>% 
+  plyr::count() %>% 
+  mutate(hex = str_replace_all(string = x, 
+                               pattern = "[^[:alnum:]]", 
+                               replacement = " ") %>% 
+           str_squish() %>%
+           tolower()
+         ) %>% 
+  left_join(x = ., 
+            y = ref,
+            by = c("hex" = "utf_8_hex")) %>%
+  # UNKNOWN to BLANK SPACE, address later
+  mutate(character = ifelse(is.na(character), " ", character))
+
+# translate
+for(i in seq(nrow(body_hex.translate))){
+  dat.body = gsub(pattern = body_hex.translate$x[i], 
+                       replacement = body_hex.translate$character[i], 
+                       x = dat.body)  
+}
+
+rm(i, j, dat.body_runon, ref, dat.body_hex, body_hex.translate) # minor clean-up
+
+# >>> misc 
+dat.body = iconv(x = dat.body, from = "UTF-8", to = "ASCII//TRANSLIT") # covert utf8 to ASCII
+dat.body = str_squish(dat.body) # clean-up whitespace
+
+# fix any missing punctuation
+missing_punct = grep("[[:punct:]]$", dat.body, invert = TRUE)
+dat.body[missing_punct] = paste0(dat.body[missing_punct], ".")
+
+writeLines(text = dat.body, con = "test.txt")
+rm(missing_punct)
+
+# Create Initial Blocks ----
+# ... by sentence
+dat.body = dat.body %>% paste0(., collapse = " ") %>% unlist()
+
+dat.body_punct = str_extract_all(string = dat.body, pattern = "[.?!]+\\s+") %>% unlist()
+dat.body = str_split(string = dat.body, 
+                     pattern = "[.?!]+\\s+", simplify = T) %>%
+  unlist()
+  
+dat.body = c(dat.body[1],
+             paste0(dat.body[-1], dat.body_punct))
+
+dat.body = trimws(dat.body)
+
+rm(dat.body_punct) # clean-up
+
+# Simple SSML Encodings ----
+dat.body_ssml = dat.body
+
+# # slash to <break strength="medium"> ## !! EXCESSIVE !!
+# # ... MUST BE FIRST TO AVOID CLASHES 
+# dat.body_ssml = gsub("/", " <break strength=\"weak\"/> ", x = dat.body_ssml)
+# assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L, 
+#                         msg = "slash -> <break strength=\"weak\">: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
+
+# # commas to <break strength="medium"> ## !! EXCESSIVE !!
+# dat.body_ssml = gsub(", ", " <break strength=\"medium\"/> ", x = dat.body_ssml)
+# assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L, 
+#                         msg = "comma -> <break strength=\"medium\">: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
+# Complex SSML Encodings ----
+# ... TBD 
+
+
+# Wrapper SSML Encodings ----
+# ... any ssml encodings at the beginning or end of a block
+# # <break> weak ... end of block ## !! DOESN'T IMPACT CLIP LENGTH !!
+# dat.body_ssml = paste0(dat.body_ssml, "<break strength=\"weak\"/>")
+# assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L, 
+#                         msg = "<speak>: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
+# <speak>
+dat.body_ssml = paste0("<speak>", dat.body_ssml, "</speak>")
+assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L, 
+                        msg = "<speak>: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
+# DeepWave Send ----
+
+# input-output tracking table
+dat = tibble(ssml_batch = eml_digest,
+             ssml_order = seq_along(dat.body_ssml), 
+             ssml_input = dat.body_ssml,
+             ssml_id = NA
+             )
+
+dat$ssml_id = sapply(dat$ssml_input, digest::digest, algo = "md5")
+dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order, 
+                                        width = 4, side = "left", pad = "0") %>%
+  paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".mp3")
+
+# authenticate
+googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
+
+# process
+# for(i in seq(nrow(dat))){
+for(i in seq(10)){
+  
+   googleLanguageR::gl_talk(input = dat$ssml_input[i], 
+                           inputType = "ssml",
+                           name = "en-US-Wavenet-D", # preferred
+                           # name = "en-US-Wavenet-B", # second-best
+                           output = paste0("output-test/", dat$ssml_output_file[i]),
+                           audioEncoding = "MP3",
+                           )
+  Sys.sleep(5)
+  
+}
+
