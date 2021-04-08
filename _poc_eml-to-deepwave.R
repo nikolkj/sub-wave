@@ -152,7 +152,7 @@ for(i in seq(nrow(body_hex.translate))){
                        x = dat.body)  
 }
 
-rm(i, j, dat.body_runon, ref, dat.body_hex, body_hex.translate) # minor clean-up
+rm(i, j, dat.body_runon, ref, dat.body_hex, body_hex.translate, body_line_max) # minor clean-up
 
 # >>> misc 
 dat.body = iconv(x = dat.body, from = "UTF-8", to = "ASCII//TRANSLIT") # covert utf8 to ASCII
@@ -162,7 +162,7 @@ dat.body = str_squish(dat.body) # clean-up whitespace
 missing_punct = grep("[[:punct:]]$", dat.body, invert = TRUE)
 dat.body[missing_punct] = paste0(dat.body[missing_punct], ".")
 
-writeLines(text = dat.body, con = "test.txt")
+# writeLines(text = dat.body, con = "test.txt")
 rm(missing_punct)
 
 # Create Initial Blocks ----
@@ -173,9 +173,12 @@ dat.body_punct = str_extract_all(string = dat.body, pattern = "[.?!]+\\s+") %>% 
 dat.body = str_split(string = dat.body, 
                      pattern = "[.?!]+\\s+", simplify = T) %>%
   unlist()
+
+# dat.body = paste0(dat.body, dat.body_punct)
   
-dat.body = c(dat.body[1],
-             paste0(dat.body[-1], dat.body_punct))
+dat.body = c(paste0(dat.body[-length(dat.body)], dat.body_punct), 
+             dat.body[-length(dat.body)] # retained final punctuation
+             )
 
 dat.body = trimws(dat.body)
 
@@ -200,6 +203,43 @@ dat.body_ssml = dat.body
 # ... TBD 
 
 
+# Optimize Block-lengths ---- 
+block_buffer = nchar(paste0("<speak>","</speak>")) # must include all tags include in sec. -"Wrapper SSML Encodings"-
+block_target = 4998L - block_buffer - length(dat.body_ssml) # gives (2) char error margin, accounts for wrapping tags and spaces introduced downstream
+block_sizes = nchar(dat.body_ssml)
+
+dat.body_ssml.merge = rep(character(), length = length(dat.body_ssml)) # preallocate
+j = 0; orig_len = length(dat.body_ssml)
+new_start = 1; new_end = 0; # block indices reference to "dat.body_ssml" initial blocks
+for(i in seq_along(dat.body_ssml)){
+  
+  if(new_end >= length(dat.body_ssml)){
+    break
+  }
+  
+  block_length = dat.body_ssml[new_start : orig_len] %>% 
+    nchar() %>% cumsum()
+  
+  new_end = (which(block_length < block_target) %>% max()) + (new_start-1)
+
+  # print(c(new_start, new_end)) # check
+  
+  j = j + 1 # itterate forward on "dat.body_ssml.merge"
+  dat.body_ssml.merge[j] = paste(dat.body_ssml[new_start:new_end], collapse = " ") # merge original blocks
+  
+  # reset search
+  new_start = new_end + 1
+
+}
+
+# overwrite original
+dat.body_ssml = dat.body_ssml.merge[which(!is.na(nchar(dat.body_ssml.merge)))] # ignores empties
+
+# clean-up
+rm(list = c(ls(pattern = "block"), 
+            "i", "j", 'new_start', 'new_end', "orig_len")
+   )
+
 # Wrapper SSML Encodings ----
 # ... any ssml encodings at the beginning or end of a block
 # # <break> weak ... end of block ## !! DOESN'T IMPACT CLIP LENGTH !!
@@ -222,23 +262,36 @@ dat = tibble(ssml_batch = eml_digest,
              )
 
 dat$ssml_id = sapply(dat$ssml_input, digest::digest, algo = "md5")
+
+# # for mp3
+# dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order, 
+#                                         width = 4, side = "left", pad = "0") %>%
+#   paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".mp3")
+
+# for linear16
 dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order, 
                                         width = 4, side = "left", pad = "0") %>%
-  paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".mp3")
+  paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".wav")
 
 # authenticate
 googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 
 # process
-# for(i in seq(nrow(dat))){
-for(i in seq(10)){
+for(i in seq(nrow(dat))){
+# for(i in seq(10)){
   
    googleLanguageR::gl_talk(input = dat$ssml_input[i], 
                            inputType = "ssml",
                            name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("output-test/", dat$ssml_output_file[i]),
-                           audioEncoding = "MP3",
+                           
+                           # should be updated to LINEAR16 once sox-issues are resolved
+                           # ... wav -> raw
+                           # ... merge raw
+                           # ... convert back to wav
+                           # audioEncoding = "MP3"
+                           audioEncoding = "LINEAR16"
                            )
   Sys.sleep(5)
   
