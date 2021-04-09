@@ -29,8 +29,11 @@ content_boundary.raw = grep(pattern = "Content-Type: multipart/alternative; boun
 
 dat.body_bounds = grep(pattern = content_boundary.raw, 
                        x = dat, value = FALSE)
+  # dat.body_bounds[2:3] plain-text email body
+  # dat.body_bounds[3:4] HTML formatted email body
 
-dat.body_raw = dat[dat.body_bounds[2]:dat.body_bounds[3]] # grab everything between boundary lines
+
+dat.body_raw = dat[dat.body_bounds[2]:dat.body_bounds[3]] # grab everything between boundary lines, plain-text
 dat.body_raw = dat.body_raw[-c(1, length(dat.body_raw))] # drop boundary lines
 
 # remove body header
@@ -143,7 +146,12 @@ body_hex.translate = dat.body_hex %>% unlist() %>%
             y = ref,
             by = c("hex" = "utf_8_hex")) %>%
   # UNKNOWN to BLANK SPACE, address later
-  mutate(character = ifelse(is.na(character), " ", character))
+  mutate(character = ifelse(is.na(character), " ", character)) %>%
+  
+  # manual encodings
+  mutate(character = ifelse(x == "=20", "@@", character) # eml uses end-of-line "20" hexstring space to indicate paragraph break 
+         # ... add as necessary
+         )
 
 # translate
 for(i in seq(nrow(body_hex.translate))){
@@ -158,6 +166,18 @@ rm(i, j, dat.body_runon, ref, dat.body_hex, body_hex.translate, body_line_max) #
 dat.body = iconv(x = dat.body, from = "UTF-8", to = "ASCII//TRANSLIT") # covert utf8 to ASCII
 dat.body = str_squish(dat.body) # clean-up whitespace
 
+# tag title-lines for downstream processing
+# ... must be done before punctuation repair
+# .... because title lines are assumed to be those that 
+# .... are not punctuated.
+
+title_lines = dat.body %>% grep("([.?!:]+)|(@@)$", x = .,
+                                invert = TRUE, value = FALSE)
+
+dat.body[title_lines] = paste0("#$#", # start-marker
+                               dat.body[title_lines], 
+                               "#%#") # end-marker
+
 # fix any missing punctuation
 missing_punct = grep("[[:punct:]]$", dat.body, invert = TRUE)
 dat.body[missing_punct] = paste0(dat.body[missing_punct], ".")
@@ -166,7 +186,7 @@ dat.body[missing_punct] = paste0(dat.body[missing_punct], ".")
 rm(missing_punct)
 
 # Create Initial Blocks ----
-# ... by sentence
+# ... by sentence, punctuation dependent.
 dat.body = dat.body %>% paste0(., collapse = " ") %>% unlist()
 
 dat.body_punct = str_extract_all(string = dat.body, pattern = "[.?!]+\\s+") %>% unlist()
@@ -184,6 +204,18 @@ rm(dat.body_punct) # clean-up
 
 # Simple SSML Encodings ----
 dat.body_ssml = dat.body
+
+# paragraph-breaks to <break>
+dat.body_ssml = gsub("(@@)", " <break strength=\"x-strong\"/> ", x = dat.body_ssml)
+assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L,
+                        msg = "paragraph-breaks -> <break>: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
+# title-line to <emphasis> with <break>
+dat.body_ssml = gsub("(#\\$#)", "<break strength=\"x-strong\"/><emphasis level=\"strong\">", x = dat.body_ssml)
+dat.body_ssml = gsub("(#%#)", "</emphasis><break strength=\"x-strong\"/>", x = dat.body_ssml)
+assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L,
+                        msg = "title-line -> <emphasis><break>: max(nchar(dat.body_ssml)) must be less than 5000L.")
+
 
 # # slash to <break strength="medium"> ## !! EXCESSIVE !!
 # # ... MUST BE FIRST TO AVOID CLASHES 
@@ -262,12 +294,12 @@ dat = tibble(ssml_batch = eml_digest,
 dat$ssml_id = sapply(dat$ssml_input, digest::digest, algo = "md5")
 
 # # for mp3
-# dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order, 
+# dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
 #                                         width = 4, side = "left", pad = "0") %>%
 #   paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".mp3")
 
 # for linear16
-dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order, 
+dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
                                         width = 4, side = "left", pad = "0") %>%
   paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".wav")
 
@@ -275,21 +307,23 @@ dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
 googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 
 # process
-for(i in seq(nrow(dat))){
-# for(i in seq(10)){
-  
+assertthat::assert_that(length(dir(path = "api-out-stage/", all.files = TRUE, pattern = "[(wav)$|(mp3)$]")) == 0 )
+# for(i in seq(nrow(dat))){
+for(i in 1){
    googleLanguageR::gl_talk(input = dat$ssml_input[i], 
                            inputType = "ssml",
                            name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
-                           output = paste0("output-test/", dat$ssml_output_file[i]),
+                           output = paste0("api-out-stage/", dat$ssml_output_file[i]),
                            
                            # should be updated to LINEAR16 once sox-issues are resolved
                            # ... wav -> raw
-                           # ... merge raw
-                           # ... convert back to wav
+                           # ... merge 
+                           # ... raw -> m4a
+                           
                            # audioEncoding = "MP3"
-                           audioEncoding = "LINEAR16"
+                           audioEncoding = "LINEAR16",
+                           effectsProfileIds = "headphone-class-device"
                            )
   Sys.sleep(5)
   
