@@ -174,7 +174,7 @@ dat.body = str_squish(dat.body) # clean-up whitespace
 # lazy removal of superflous string
 if(eml_digest == "0270e8ebe65e726e38b8a95045092d06"){
   #LaAaAaAaZzzyY
-  dat.body_raw = dat.body_raw[-1] # "View this post on the web at"
+  dat.body = dat.body[-1] # "View this post on the web at"
   
 }
 
