@@ -69,6 +69,12 @@ eml_digest = digest::digest(object = dat.body_raw, serialize = TRUE, algo = "md5
 
 # EML Preprocesing ----
 
+# >>> misc fixes
+# "=20=" invalid hexstring handling
+# ... causes <break>'s when EOL
+dat.body_raw = gsub(pattern = "=20=$", replacement = " =", x = dat.body_raw)
+
+
 # >>> merge run-on lines
 # body_line_max = max(nchar(dat.body_raw)) # doesn't work, exceptions exist
   # ... e.g. one line at 78 characters ending in "=20"
@@ -308,8 +314,8 @@ googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 
 # process
 assertthat::assert_that(length(dir(path = "api-out-stage/", all.files = TRUE, pattern = "[(wav)$|(mp3)$]")) == 0 )
-# for(i in seq(nrow(dat))){
-for(i in 1){
+for(i in seq(nrow(dat))){
+# for(i in 1){
    googleLanguageR::gl_talk(input = dat$ssml_input[i], 
                            inputType = "ssml",
                            name = "en-US-Wavenet-D", # preferred
