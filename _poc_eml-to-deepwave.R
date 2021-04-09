@@ -15,10 +15,11 @@ require(tidyverse)
 require(magrittr)
 
 # Inventory Input Queue ---- 
-# TBD 
+# grab input file 
+input_file_name = dir(path = "input-test/", pattern = ".eml$")[1]
 
-# sample raw input (temp)
-dat = readLines(con = "input-test/America's crumbling roads and bridges are fine.eml", warn = FALSE) 
+dat = paste0("input-test/", input_file_name) %>%
+  readLines(con = ., warn = FALSE) 
 
 # Extract EML Body ----
 # pull email body
@@ -66,14 +67,12 @@ rm(dat, content_boundary.raw, dat.body_bounds,
 # unique body id, used for batch processing
 eml_digest = digest::digest(object = dat.body_raw, serialize = TRUE, algo = "md5")
 
-
 # EML Preprocesing ----
 
 # >>> misc fixes
 # "=20=" invalid hexstring handling
 # ... causes <break>'s when EOL
 dat.body_raw = gsub(pattern = "=20=$", replacement = " =", x = dat.body_raw)
-
 
 # >>> merge run-on lines
 # body_line_max = max(nchar(dat.body_raw)) # doesn't work, exceptions exist
@@ -171,6 +170,13 @@ rm(i, j, dat.body_runon, ref, dat.body_hex, body_hex.translate, body_line_max) #
 # >>> misc 
 dat.body = iconv(x = dat.body, from = "UTF-8", to = "ASCII//TRANSLIT") # covert utf8 to ASCII
 dat.body = str_squish(dat.body) # clean-up whitespace
+
+# lazy removal of superflous string
+if(eml_digest == "0270e8ebe65e726e38b8a95045092d06"){
+  #LaAaAaAaZzzyY
+  dat.body_raw = dat.body_raw[-1] # "View this post on the web at"
+  
+}
 
 # tag title-lines for downstream processing
 # ... must be done before punctuation repair
@@ -299,11 +305,6 @@ dat = tibble(ssml_batch = eml_digest,
 
 dat$ssml_id = sapply(dat$ssml_input, digest::digest, algo = "md5")
 
-# # for mp3
-# dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
-#                                         width = 4, side = "left", pad = "0") %>%
-#   paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".mp3")
-
 # for linear16
 dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
                                         width = 4, side = "left", pad = "0") %>%
@@ -313,7 +314,8 @@ dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
 googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 
 # process
-assertthat::assert_that(length(dir(path = "api-out-stage/", all.files = TRUE, pattern = "[(wav)$|(mp3)$]")) == 0 )
+assertthat::assert_that(length(dir(path = "api-out-stage/", 
+                                   pattern = "(wav)$|(mp3)$|(m4a)$")) == 0 )
 for(i in seq(nrow(dat))){
 # for(i in 1){
    googleLanguageR::gl_talk(input = dat$ssml_input[i], 
@@ -321,17 +323,65 @@ for(i in seq(nrow(dat))){
                            name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", dat$ssml_output_file[i]),
-                           
-                           # should be updated to LINEAR16 once sox-issues are resolved
-                           # ... wav -> raw
-                           # ... merge 
-                           # ... raw -> m4a
-                           
-                           # audioEncoding = "MP3"
                            audioEncoding = "LINEAR16",
                            effectsProfileIds = "headphone-class-device"
                            )
   Sys.sleep(5)
   
 }
+
+# Encoding Conversions and File Concatenation ----
+# Convert WAV to m4a
+# ... dump to "convert-stage/" dir
+
+# convert
+base::shell(cmd = 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO ffmpeg.exe -i "%G" "%~nG.m4a"')
+
+# merge 
+dir(path = "api-out-stage/", pattern = ".m4a$") %>% 
+  paste0("file '",.,"'") %>% 
+  writeLines(text = ., con = "api-out-stage/ref.txt") # make reference file with targets
+
+output_file_name = paste0(dat$ssml_batch[i], ".m4a") 
+output_file_name %>%
+  paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
+  shell(cmd = .) # merge
+
+# move
+output_file_name %>% 
+  paste("cd api-out-stage/ && move", ., "../landing/") %>% # move final output file
+  shell(cmd = .)
+shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
+shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
+
+input_file_name %>% 
+  paste0('"',.,'"') %>% 
+  paste("cd input-test/ && move", ., "../exhaust/") %>% # move input file
+  shell(cmd = .)
+
+# archive processing table
+dat %>% 
+  # add record for final output file
+  add_row(ssml_batch = dat$ssml_batch[1], 
+          ssml_order = 0, ssml_output_file = output_file_name) %>% 
+  # add record for input file
+  add_row(ssml_batch = dat$ssml_batch[1],
+          ssml_order = -1, 
+          ssml_input = input_file_name) %>%
+  writexl::write_xlsx(x = ., 
+                      path = paste0("exhaust/",
+                                    gsub("m4a$", "xlsx", output_file_name)))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
