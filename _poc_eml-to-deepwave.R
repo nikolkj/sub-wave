@@ -21,6 +21,62 @@ input_file_name = dir(path = "input-test/", pattern = ".eml$")[1]
 dat = paste0("input-test/", input_file_name) %>%
   readLines(con = ., warn = FALSE) 
 
+# Generate Intro Blob ----
+# get post author from sender tag
+post_author = grep("(?i)^\\s*sender:.*@.*", dat, value = TRUE)[1] %>% 
+  trimws() %>% 
+  gsub("^(?i)sender:\\s*", "", .) %>% 
+  gsub("\\s*<.*@.*>\\s*$", "", .) %>% 
+  gsub('"',"",.) %>% 
+  gsub('"',"",.) %>% trimws()
+
+# get post title from <title> tag
+post_title = grep("<title>", dat) %>% 
+  c((.-5):(.+5)) %>% unique() %>% sort() %>%  # lazy
+  dat[.] %>% gsub("=$", "", .) %>%
+  paste0(., collapse = "") %>% 
+  str_extract(string = ., pattern = "<title>.*</title>") %>%
+  gsub("(<title>)|</title>", "", .) %>%
+  trimws() 
+
+# get post date
+post_date.raw = grep("(?i)^\\s*date:", dat, value = TRUE)[1] %>% 
+  trimws() %>%
+  str_extract("[A-z]{3}, \\d{1,2} [A-z]{3} \\d{4}") %>%
+  str_remove(., "[A-z]{3},\\s+") %>% 
+  as.Date(., "%d %b %Y")
+
+assertthat::assert_that(assertthat::is.date(post_date.raw))
+post_date.dow = base::weekdays(post_date.raw)
+post_date.raw = as.character(post_date.raw)
+
+# get post link
+post_link = grep("(?i)^\\s*list-url:", dat, value = TRUE)[1] %>%
+    gsub("(?i)^\\s*list-url:\\s*", "", .) %>%
+    gsub("(?i)<https://www.",  "", .) %>% 
+    gsub("/>.*",  "", .)
+
+
+assertthat::assert_that(length(post_title) + # both objs w/ len = 1
+                          length(post_author) + 
+                          length(post_date.dow) + 
+                          length(post_date.raw) + 
+                          length(post_link) == 5) 
+
+# make intro ssml
+intro_blob = paste0("<speak>",
+                    "Greetings from <emphasis level=\"moderate\">Sub Waves</emphais><break strength=\"x-strong\"/>.",
+                    "This is a reeding of <break strength=\"strong\"/><emphasis level=\"x-strong\">\"", post_title, 
+                    "\"</emphais> by <break strength=\"strong\"/>", post_author, 
+                    ". Published through Substack on ", post_date.dow, ", ",
+                    "<say-as interpret-as=\"date\" format=\"yyyymmdd\">", post_date.raw,"</say-as>.",
+                    "Enjoy this, and other writings at ", post_link,
+                    " <break strength=\"x-strong\"/> .",
+                    "</speak>"
+                    )
+
+assert_that(nchar(intro_blob) < 4999L)
+
 # Extract EML Body ----
 # pull email body
 content_boundary.raw = grep(pattern = "Content-Type: multipart/alternative; boundary=",
@@ -172,15 +228,11 @@ dat.body = iconv(x = dat.body, from = "UTF-8", to = "ASCII//TRANSLIT") # covert 
 dat.body = str_squish(dat.body) # clean-up whitespace
 
 # lazy removal of superflous string
-if(eml_digest == "0270e8ebe65e726e38b8a95045092d06"){
-  #LaAaAaAaZzzyY
-  dat.body = dat.body[-1] # "View this post on the web at"
-  
-}
+dat.body = dat.body[-grep("(?i)View this post on the web at", dat.body)[1]] #LaAaAaAaZzzyY 
 
 # tag title-lines for downstream processing
 # ... must be done before punctuation repair
-# .... because title lines are assumed to be those that 
+# .... because subtitle lines are assumed to be those that 
 # .... are not punctuated.
 
 title_lines = dat.body %>% grep("([.?!:]+)|(@@)$", x = .,
@@ -222,7 +274,7 @@ dat.body_ssml = gsub("(@@)", " <break strength=\"x-strong\"/> ", x = dat.body_ss
 assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L,
                         msg = "paragraph-breaks -> <break>: max(nchar(dat.body_ssml)) must be less than 5000L.")
 
-# title-line to <emphasis> with <break>
+# subtitle-line to <emphasis> with <break>
 dat.body_ssml = gsub("(#\\$#)", "<break strength=\"x-strong\"/><emphasis level=\"strong\">", x = dat.body_ssml)
 dat.body_ssml = gsub("(#%#)", "</emphasis><break strength=\"x-strong\"/>", x = dat.body_ssml)
 assertthat::assert_that(max(nchar(dat.body_ssml)) < 5000L,
@@ -310,14 +362,39 @@ dat$ssml_output_file = stringr::str_pad(string = dat$ssml_order,
                                         width = 4, side = "left", pad = "0") %>%
   paste0(dat$ssml_batch, "_", ., "_", dat$ssml_id, ".wav")
 
-# authenticate
-googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
+# add intro-blob record
+intro_file_name = paste0(dat$ssml_batch[1], "__intro", ".wav") 
+dat = dat %>% 
+  # add record for final output file
+  add_row(ssml_batch = dat$ssml_batch[1], 
+          ssml_order = -2, # reserved
+          ssml_output_file = intro_file_name,
+          ssml_input = intro_blob,
+          ssml_id = digest::digest(object = intro_blob, algo = "md5")
+          )
 
-# process
+# check that all audio files have been removed from staging directory
 assertthat::assert_that(length(dir(path = "api-out-stage/", 
                                    pattern = "(wav)$|(mp3)$|(m4a)$")) == 0 )
+
+# API authentication
+googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
+
+# process intro blob
+googleLanguageR::gl_talk(input = intro_blob, 
+                         inputType = "ssml",
+                         # name = "en-US-Wavenet-D", # preferred
+                         name = "en-US-Wavenet-B", # second-best
+                         output = paste0("api-out-stage/",
+                                         dat$ssml_output_file[which(dat$ssml_order == -2)]
+                                         ),
+                         audioEncoding = "LINEAR16",
+                         effectsProfileIds = "headphone-class-device"
+)
+
+# process main reading
 for(i in seq(nrow(dat))){
-# for(i in 1){
+   if(dat$ssml_order[i] < 1){next} # skip any non-main entries
    googleLanguageR::gl_talk(input = dat$ssml_input[i], 
                            inputType = "ssml",
                            name = "en-US-Wavenet-D", # preferred
@@ -326,7 +403,7 @@ for(i in seq(nrow(dat))){
                            audioEncoding = "LINEAR16",
                            effectsProfileIds = "headphone-class-device"
                            )
-  Sys.sleep(5)
+   Sys.sleep(5)
   
 }
 
@@ -345,28 +422,29 @@ dir(path = "api-out-stage/", pattern = ".m4a$") %>%
 output_file_name = paste0(dat$ssml_batch[i], ".m4a") 
 output_file_name %>%
   paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
-  shell(cmd = .) # merge
+  base::shell(cmd = .) # merge
 
 # move
 output_file_name %>% 
   paste("cd api-out-stage/ && move", ., "../landing/") %>% # move final output file
   shell(cmd = .)
-shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
-shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
+base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
+base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
 
 input_file_name %>% 
   paste0('"',.,'"') %>% 
   paste("cd input-test/ && move", ., "../exhaust/") %>% # move input file
-  shell(cmd = .)
+  base::shell(cmd = .)
 
 # archive processing table
 dat %>% 
   # add record for final output file
   add_row(ssml_batch = dat$ssml_batch[1], 
-          ssml_order = 0, ssml_output_file = output_file_name) %>% 
+          ssml_order = 0, # reserved
+          ssml_output_file = output_file_name) %>% 
   # add record for input file
   add_row(ssml_batch = dat$ssml_batch[1],
-          ssml_order = -1, 
+          ssml_order = -1, # reserved
           ssml_input = input_file_name) %>%
   writexl::write_xlsx(x = ., 
                       path = paste0("exhaust/",
