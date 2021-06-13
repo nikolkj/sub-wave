@@ -26,9 +26,10 @@ dat = paste0("input-test/", input_file_name) %>%
 post_author = grep("(?i)^\\s*sender:.*@.*", dat, value = TRUE)[1] %>% 
   trimws() %>% 
   gsub("^(?i)sender:\\s*", "", .) %>% 
-  gsub("\\s*<.*@.*>\\s*$", "", .) %>% 
   gsub('"',"",.) %>% 
-  gsub('"',"",.) %>% trimws()
+  gsub('"',"",.) %>% 
+  gsub("\\s*<.*>\\s*$", "", .) %>%
+  trimws()
 
 # get post title from <title> tag
 post_title = grep("<title>", dat) %>% 
@@ -74,7 +75,7 @@ intro_blob = paste0("<speak>",
                     "</speak>"
                     )
 
-assert_that(nchar(intro_blob) < 4999L)
+assertthat::assert_that(nchar(intro_blob) < 4999L)
 
 # Extract EML Body ----
 # pull email body
