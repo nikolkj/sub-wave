@@ -65,7 +65,6 @@ assertthat::assert_that(length(post_title) + # both objs w/ len = 1
 
 # make intro ssml
 intro_blob = paste0("<speak>",
-                    "Greetings from <emphasis level=\"moderate\">Sub Waves</emphais><break strength=\"x-strong\"/>.",
                     "This is a reeding of <break strength=\"strong\"/><emphasis level=\"x-strong\">\"", post_title, 
                     "\"</emphais> by <break strength=\"strong\"/>", post_author, 
                     ". Published through Substack on ", post_date.dow, ", ",
@@ -450,7 +449,11 @@ dat %>%
                       path = paste0("exhaust/",
                                     gsub("m4a$", "xlsx", output_file_name)))
 
-
+# Write About Files
+writeLines(text = paste(toupper(post_link), 
+                        stringr::str_to_title(string = post_title), 
+                        sep =  " - "), 
+           con = paste("landing-info/", dat$ssml_batch[i], "_title.txt"))
 
 
 
