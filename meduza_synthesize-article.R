@@ -131,7 +131,38 @@ for(i in seq(nrow(p.dat))){
   
 }
 
-# Prep: Audio syntehsis clean-up ----
+# Prep: Blobs ----
+article.author = article %>% 
+  html_node("[class='MaterialNote-module_note_caption__1ezSo']") %>% html_text()
+
+article.translator = article %>% 
+  html_node("[class='MaterialNote-module_note_credit__PuFyX']") %>% html_text()
+
+article.ts = article %>% 
+  html_node("[class='Timestamp-module_root__coOvT']") %>% 
+  html_text()
+
+article.date = article.ts %>% 
+  as.Date(x = ., "%H:%M %p, %B %d, %Y") %>% 
+  format(x = ., "%B %d, %Y") 
+
+article.by = article_target$by_line
+
+blob.header = paste0("<emphasis level=\"strong\">", 
+                     article.by, ". ",
+                     "</emphasis>",
+                     article.author, ". ",
+                     article.translator, ".") %>% 
+  iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT") %>% 
+  paste0("<speak>", ., "</speak>")
+
+blob.footer = paste0("Published on ", article.date, ".") %>% 
+  iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT") %>%
+  paste0("<speak><break strength=\"x-strong\"/><emphasis level=\"strong\">", 
+         ., 
+         "</break><emphasis></speak>")
+
+# Prep: Body audio syntehsis clean-up ----
 # Based on [article.sections]
 # ... sections outside "GeneralMaterial-article" block will keep default order of 0
 # .... and are dropped downstream
@@ -222,6 +253,30 @@ for(i in seq_along(dat$wav_order)){
 #   }
 #   
   
+# Prep: Blob Encoding ----
+blob.header %>% 
+googleLanguageR::gl_talk(input = ., 
+                         inputType = "ssml",
+                         # name = "en-US-Wavenet-D", # preferred
+                         name = "en-US-Wavenet-B", # second-best
+                         output = paste0("api-out-stage/", 
+                                         "000_intro",
+                                         ".wav"),
+                         audioEncoding = "LINEAR16",
+                         effectsProfileIds = "headphone-class-device"
+)
+
+blob.footer %>% 
+  googleLanguageR::gl_talk(input = ., 
+                           inputType = "ssml",
+                           # name = "en-US-Wavenet-D", # preferred
+                           name = "en-US-Wavenet-B", # second-best
+                           output = paste0("api-out-stage/", 
+                                           "999_footer",
+                                           ".wav"),
+                           audioEncoding = "LINEAR16",
+                           effectsProfileIds = "headphone-class-device"
+  )
   
 # Encoding conversions and audi concatenation ----
 # Convert WAV to m4a
