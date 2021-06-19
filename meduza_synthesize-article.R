@@ -1,6 +1,7 @@
 # Generate synthetic voice encoding for meduza articles
 rm(list = ls())
 require(tidyverse)
+require(rvest)
 
 meduza_check = readRDS(file = "meduza-temp.rds")
 
@@ -16,9 +17,9 @@ googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 # grab article
 article_target = meduza_check %>% 
   filter(!processed) %>% 
-  slice(1) 
+  slice(3) 
 
-article = paste0("https://meduza.io/", 
+article = paste0("https://meduza.io", 
                  article_target$link[1]) %>% 
   rvest::read_html()
 
@@ -26,7 +27,7 @@ article = paste0("https://meduza.io/",
 # ... limit to accepted types
 # ... defined by [accpt_sections] 
 # .... which correspond to those having parsing logic
-accpt_sections = c("p", "h3") # control
+accpt_sections = c("p", "h3", "ul") # control
 
 article.sections = article %>% 
   html_node("[class='GeneralMaterial-article']") %>% 
@@ -38,12 +39,14 @@ article.sections = article.sections[which(article.sections %in% accpt_sections)]
 # grab sections
 raw.p = article %>% html_nodes("p") %>% html_text()
 raw.h3 = article %>% html_nodes("h3") %>% html_text()
+raw.ul = article %>% html_nodes("ul") %>% html_text()
 
 # Process: [h3] ----
 # initialize tbl
 h3.dat = tibble(raw = raw.h3,
                raw_nchar = nchar(raw),
-               wav_order = 0
+               wav_order = 0,
+               tag = "h3"
 )
 
 # update text encoing to ASCII
@@ -91,7 +94,8 @@ for(i in seq(nrow(h3.dat))){
 # initialize tbl
 p.dat = tibble(raw = raw.p,
                raw_nchar = nchar(raw),
-               wav_order = 0
+               wav_order = 0,
+               tag = "p"
                )
 
 # update text encoing to ASCII
@@ -122,6 +126,77 @@ for(i in seq(nrow(p.dat))){
                            name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", p.dat$rid[i],
+                                           ".wav"),
+                           audioEncoding = "LINEAR16",
+                           effectsProfileIds = "headphone-class-device"
+  )
+  
+  Sys.sleep(5)
+  
+}
+
+# Process: [ul] ----
+
+# Identify selection targets
+# ... ignore empties and superflous (trailer) matches
+ul.select = which(raw.ul != "")
+n = sum(article.sections == "ul")
+ul.select = ul.select[c(1:n)]
+rm(n)
+  
+# Re-make raw extract based on selection targe
+raw.ul = article %>% html_nodes("ul") %>% 
+  lapply(., function(x) {
+    x %>% html_children() %>% html_text()
+  }) %>% 
+  .[ul.select]
+
+rm(ul.select)
+
+# pre-processing: add breaks
+raw.ul = raw.ul %>%
+  lapply(., function(x) {
+    paste0("<break>", x)
+  })
+
+# # pre-processing: concatenate lists
+raw.ul = sapply(raw.ul, paste, collapse = "")
+
+# initialize tbl
+ul.dat = tibble(raw = raw.ul,
+               raw_nchar = nchar(raw),
+               wav_order = 0,
+               tag = "ul"
+)
+
+# update text encoing to ASCII
+ul.dat$raw = ul.dat$raw %>% 
+  iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT")
+
+# assign unique id for each section
+ul.dat$rid = sapply(ul.dat$raw, FUN = function(x){ # raw-id
+  # make unique id
+  digest::digest(object = x, algo = "md5", serialize = T)
+})
+
+ul.dat$rid = unname(ul.dat$rid)
+
+# check that all paragraphs are under 5K char, allow 200 char for S
+assertthat::assert_that(all(ul.dat$raw_nchar < 4800L)) 
+
+ul.dat = ul.dat %>% 
+  mutate(ssml_encode = paste0("<speak>",
+                              raw,
+                              "</speak>")
+  )
+
+for(i in seq(nrow(ul.dat))){
+  # write output to "api-out-stage/"
+  googleLanguageR::gl_talk(input = ul.dat$ssml_encode[i], 
+                           inputType = "ssml",
+                           name = "en-US-Wavenet-D", # preferred
+                           # name = "en-US-Wavenet-B", # second-best
+                           output = paste0("api-out-stage/", ul.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
                            effectsProfileIds = "headphone-class-device"
@@ -168,6 +243,7 @@ blob.footer = paste0("Published on ", article.date, ".") %>%
 # .... and are dropped downstream
 itt.p = 1 
 itt.h3 = 1
+itt.ul = 1
 for(i in seq_along(article.sections)){
   if(article.sections[i] == "h3"){
     h3.dat$wav_order[itt.h3] = i
@@ -176,6 +252,10 @@ for(i in seq_along(article.sections)){
   }else if(article.sections[i] == "p"){
     p.dat$wav_order[itt.p] = i
     itt.p = itt.p + 1
+    
+  }else if(article.sections[i] == "ul"){
+    p.dat$wav_order[itt.ul] = i
+    itt.ul = itt.ul + 1
     
   }else{
     stop("Set order, unknown section type.")
@@ -186,7 +266,8 @@ for(i in seq_along(article.sections)){
 # Processing Queue
 dat = bind_rows(
   h3.dat,
-  p.dat
+  p.dat,
+  ul.dat
 ) %>% 
   arrange(wav_order)
 
@@ -278,7 +359,7 @@ blob.footer %>%
                            effectsProfileIds = "headphone-class-device"
   )
   
-# Encoding conversions and audi concatenation ----
+# Encoding conversions and audio concatenation ----
 # Convert WAV to m4a
 # ... dump to "convert-stage/" dir
 
@@ -313,7 +394,68 @@ base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a'
 #   paste("cd input-test/ && move", ., "../exhaust/") %>% # move input file
 #   base::shell(cmd = .)
 
+# Publish to Castos -----
+post.url = paste0("http://app.castos.com/api/v2/podcasts/",
+                  keyring::key_get(service = "castos.meduza-en-vhf.podcast-id"),
+                  "/episodes"
+                  )
+# Make post content
+# template
+post.content = "<p>Source: <a href = \"POST_LINK\">POST_LINK</a></p><p>\"POST_CONTENT\"</p>" 
 
+# update
+post.content = post.content %>% 
+  gsub(pattern = "(POST_LINK)", 
+       replacement = paste0("https://meduza.io/", article_target$link[1]), 
+       x = .) %>% 
+  gsub(pattern = "(POST_CONTENT)", 
+       replacement = p.dat$raw[1], 
+       x = .)
+
+# Make post title
+post.title = paste0(article_target$by_line[1], ": ",
+                    trimws(
+                      str_sub(
+                        string = article_target$full_title[1],
+                        start = nchar(article_target$by_line[1]) + 1,
+                        end = -1L
+                      )
+                    ))
+
+# Make post file
+# post.file_path = system.file(paste0("landing/",
+#                                    output_file_name))
+# post.file_path = paste0("file=@", getwd(),
+#                         "/landing/",
+#                         output_file_name)
+
+post.file_path = paste0(getwd(),
+                        "/landing/",
+                        output_file_name)
+
+# post.file_path = httr::upload_file(post.file_path)
+
+# post.file_con = file(post.file_path, "rb")
+# 
+# post.file = base::readBin(con = post.file_con, what = raw())
+
+# Make post request
+post.query = list(token = keyring::key_get(service = "castos-token"))
+# post.body = list('form[post_title]' = post.title,
+#                  'form[post_content]' = post.content,
+#                  'form[episode_file]' = post.file_path
+#                  )
+post.body = list(post_title = post.title,
+                 post_content = post.content,
+                 episode_file = post.file_path,
+                 episode_file = httr::upload_file(post.file_path)
+)
+
+a = httr::POST(url = post.url, 
+           query = post.query, 
+           body = post.body)
+
+# a = httr::GET(url = "http://app.castos.com/api/v2/podcasts/27451/episodes", query = request)
 
 
 
