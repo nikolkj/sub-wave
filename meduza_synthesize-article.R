@@ -401,73 +401,73 @@ output_file_name %>%
 base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
 base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
 
-# dat$new_filename %>% 
-#   paste0('"',.,'"') %>% 
+# dat$new_filename %>%
+#   paste0('"',.,'"') %>%
 #   paste("cd input-test/ && move", ., "../exhaust/") %>% # move input file
 #   base::shell(cmd = .)
 
-# Publish to Castos -----
-post.url = paste0("http://app.castos.com/api/v2/podcasts/",
-                  keyring::key_get(service = "castos.meduza-en-vhf.podcast-id"),
-                  "/episodes"
-                  )
-# Make post content
-# template
-post.content = "<p>Source: <a href = \"POST_LINK\">POST_LINK</a></p><p>\"POST_CONTENT\"</p>" 
-
-# update
-post.content = post.content %>% 
-  gsub(pattern = "(POST_LINK)", 
-       replacement = paste0("https://meduza.io/", article_target$link[1]), 
-       x = .) %>% 
-  gsub(pattern = "(POST_CONTENT)", 
-       replacement = p.dat$raw[1], 
-       x = .)
-
-# Make post title
-post.title = paste0(article_target$by_line[1], ": ",
-                    trimws(
-                      str_sub(
-                        string = article_target$full_title[1],
-                        start = nchar(article_target$by_line[1]) + 1,
-                        end = -1L
-                      )
-                    ))
-
-# Make post file
-# post.file_path = system.file(paste0("landing/",
-#                                    output_file_name))
-# post.file_path = paste0("file=@", getwd(),
+# # Publish to Castos -----
+# post.url = paste0("http://app.castos.com/api/v2/podcasts/",
+#                   keyring::key_get(service = "castos.meduza-en-vhf.podcast-id"),
+#                   "/episodes"
+#                   )
+# # Make post content
+# # template
+# post.content = "<p>Source: <a href = \"POST_LINK\">POST_LINK</a></p><p>\"POST_CONTENT\"</p>" 
+# 
+# # update
+# post.content = post.content %>% 
+#   gsub(pattern = "(POST_LINK)", 
+#        replacement = paste0("https://meduza.io/", article_target$link[1]), 
+#        x = .) %>% 
+#   gsub(pattern = "(POST_CONTENT)", 
+#        replacement = p.dat$raw[1], 
+#        x = .)
+# 
+# # Make post title
+# post.title = paste0(article_target$by_line[1], ": ",
+#                     trimws(
+#                       str_sub(
+#                         string = article_target$full_title[1],
+#                         start = nchar(article_target$by_line[1]) + 1,
+#                         end = -1L
+#                       )
+#                     ))
+# 
+# # Make post file
+# # post.file_path = system.file(paste0("landing/",
+# #                                    output_file_name))
+# # post.file_path = paste0("file=@", getwd(),
+# #                         "/landing/",
+# #                         output_file_name)
+# 
+# post.file_path = paste0(getwd(),
 #                         "/landing/",
 #                         output_file_name)
-
-post.file_path = paste0(getwd(),
-                        "/landing/",
-                        output_file_name)
-
-# post.file_path = httr::upload_file(post.file_path)
-
-# post.file_con = file(post.file_path, "rb")
 # 
-# post.file = base::readBin(con = post.file_con, what = raw())
-
-# Make post request
-post.query = list(token = keyring::key_get(service = "castos-token"))
-# post.body = list('form[post_title]' = post.title,
-#                  'form[post_content]' = post.content,
-#                  'form[episode_file]' = post.file_path
-#                  )
-post.body = list(post_title = post.title,
-                 post_content = post.content,
-                 episode_file = post.file_path,
-                 episode_file = httr::upload_file(post.file_path)
-)
-
-a = httr::POST(url = post.url, 
-           query = post.query, 
-           body = post.body)
-
-# a = httr::GET(url = "http://app.castos.com/api/v2/podcasts/27451/episodes", query = request)
+# # post.file_path = httr::upload_file(post.file_path)
+# 
+# # post.file_con = file(post.file_path, "rb")
+# # 
+# # post.file = base::readBin(con = post.file_con, what = raw())
+# 
+# # Make post request
+# post.query = list(token = keyring::key_get(service = "castos-token"))
+# # post.body = list('form[post_title]' = post.title,
+# #                  'form[post_content]' = post.content,
+# #                  'form[episode_file]' = post.file_path
+# #                  )
+# post.body = list(post_title = post.title,
+#                  post_content = post.content,
+#                  episode_file = post.file_path,
+#                  episode_file = httr::upload_file(post.file_path)
+# )
+# 
+# a = httr::POST(url = post.url, 
+#            query = post.query, 
+#            body = post.body)
+# 
+# # a = httr::GET(url = "http://app.castos.com/api/v2/podcasts/27451/episodes", query = request)
 
 
 
