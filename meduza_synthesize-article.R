@@ -38,10 +38,22 @@ article.sections = article.sections[which(article.sections %in% accpt_sections)]
 
 # grab sections
 raw.p = article %>% html_nodes("p") %>% html_text()
-raw.h3 = article %>% html_nodes("h3") %>% html_text()
+raw.h3 = article %>% html_nodes("h3") %>% html_children() %>% html_text() 
 raw.ul = article %>% html_nodes("ul") %>% html_text()
 
 # Process: [h3] ----
+# Identify selection targets
+# ... ignore superflous (trailer) matches
+h3.select = which(raw.h3 != "")
+n = sum(article.sections == "h3")
+h3.select = h3.select[c(1:n)]
+rm(n)
+
+# Update raw-extract
+raw.h3 = raw.h3[h3.select]
+assertthat::assert_that(!any(is.na(raw.h3))) # check for expected number, length(raw) = n & no NA
+
+
 # initialize tbl
 h3.dat = tibble(raw = raw.h3,
                raw_nchar = nchar(raw),
@@ -254,7 +266,7 @@ for(i in seq_along(article.sections)){
     itt.p = itt.p + 1
     
   }else if(article.sections[i] == "ul"){
-    p.dat$wav_order[itt.ul] = i
+    ul.dat$wav_order[itt.ul] = i
     itt.ul = itt.ul + 1
     
   }else{
