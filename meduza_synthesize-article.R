@@ -27,7 +27,7 @@ article = paste0("https://meduza.io",
 # ... limit to accepted types
 # ... defined by [accpt_sections] 
 # .... which correspond to those having parsing logic
-accpt_sections = c("p", "h3", "ul") # control
+accpt_sections = c("p", "h3", "ul", "ol") # control
 
 article.sections = article %>% 
   html_node("[class='GeneralMaterial-article']") %>% 
@@ -40,6 +40,7 @@ article.sections = article.sections[which(article.sections %in% accpt_sections)]
 raw.p = article %>% html_nodes("p") %>% html_text()
 raw.h3 = article %>% html_nodes("h3") %>% html_children() %>% html_text() 
 raw.ul = article %>% html_nodes("ul") %>% html_text()
+raw.ol = article %>% html_nodes("ol") %>% html_text()
 
 # Process: [h3] ----
 # Identify selection targets
@@ -218,6 +219,83 @@ for(i in seq(nrow(ul.dat))){
   
 }
 
+# Process: [ol]
+# Process: [ul] ----
+
+# Identify selection targets
+# ... ignore empties and superflous (trailer) matches
+ol.select = which(raw.ol != "")
+n = sum(article.sections == "ol")
+ol.select = ol.select[c(1:n)]
+rm(n)
+
+# Re-make raw extract based on selection targe
+raw.ol = article %>% html_nodes("ol") %>% 
+  lapply(., function(x) {
+    x %>% html_children() %>% html_text()
+  }) %>% 
+  .[ol.select]
+
+raw.ol = lapply(raw.ol, function(x) {
+  n = seq(x)
+  paste(paste0(n, "."), x)
+})
+
+rm(ol.select)
+
+# pre-processing: add breaks
+raw.ol = raw.ol %>%
+  lapply(., function(x) {
+    paste0('<break strength="strong">', x)
+  })
+
+# # pre-processing: concatenate lists
+raw.ol = sapply(raw.ol, paste, collapse = " ")
+
+# initialize tbl
+ol.dat = tibble(raw = raw.ol,
+                raw_nchar = nchar(raw),
+                wav_order = 0,
+                tag = "ol"
+)
+
+# update text encoing to ASCII
+ol.dat$raw = ol.dat$raw %>% 
+  iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT")
+
+# assign unique id for each section
+ol.dat$rid = sapply(ol.dat$raw, FUN = function(x){ # raw-id
+  # make unique id
+  digest::digest(object = x, algo = "md5", serialize = T)
+})
+
+ol.dat$rid = unname(ol.dat$rid)
+
+# check that all paragraphs are under 5K char, allow 200 char for S
+assertthat::assert_that(all(ol.dat$raw_nchar < 4800L)) 
+
+ol.dat = ol.dat %>% 
+  mutate(ssml_encode = paste0("<speak>",
+                              raw,
+                              "</speak>")
+  )
+
+for(i in seq(nrow(ol.dat))){
+  # write output to "api-out-stage/"
+  googleLanguageR::gl_talk(input = ol.dat$ssml_encode[i], 
+                           inputType = "ssml",
+                           name = "en-US-Wavenet-D", # preferred
+                           # name = "en-US-Wavenet-B", # second-best
+                           output = paste0("api-out-stage/", ol.dat$rid[i],
+                                           ".wav"),
+                           audioEncoding = "LINEAR16",
+                           effectsProfileIds = "headphone-class-device"
+  )
+  
+  Sys.sleep(5)
+  
+}
+
 # Prep: Blobs ----
 article.author = article %>% 
   html_node("[class='MaterialNote-module_note_caption__1ezSo']") %>% html_text()
@@ -256,6 +334,8 @@ blob.footer = paste0("Published on ", article.date, ".") %>%
 itt.p = 1 
 itt.h3 = 1
 itt.ul = 1
+itt.ol = 1
+
 for(i in seq_along(article.sections)){
   if(article.sections[i] == "h3"){
     h3.dat$wav_order[itt.h3] = i
@@ -269,6 +349,10 @@ for(i in seq_along(article.sections)){
     ul.dat$wav_order[itt.ul] = i
     itt.ul = itt.ul + 1
     
+  }else if(article.sections[i] == "ol"){
+    ol.dat$wav_order[itt.ol] = i
+    itt.ol = itt.ol + 1
+    
   }else{
     stop("Set order, unknown section type.")
   }
@@ -279,7 +363,8 @@ for(i in seq_along(article.sections)){
 dat = bind_rows(
   h3.dat,
   p.dat,
-  ul.dat
+  ul.dat,
+  ol.dat
 ) %>% 
   arrange(wav_order)
 
