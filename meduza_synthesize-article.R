@@ -1,27 +1,47 @@
-# Generate synthetic voice encoding for meduza articles
+# ABOUT: Generate synthetic voice encoding for meduza articles
+# ...
+
+# Start-up ----
 rm(list = ls())
 require(tidyverse)
 require(rvest)
+"%nin%" = Negate("%in%")
 
-meduza_check = readRDS(file = "meduza-temp.rds")
+# Prep: General ----
 
-if(all(meduza_check$processed)){
-  stop() # terminate script if all articles are processed
+# get processing queue 
+meduza_queue = readRDS(file = "meduza-processing-queue.rds")
+
+if(all(meduza_queue$processed)){
+  stop("Queue: No new episodes.") # terminate script if all articles are processed
   # else, begin processing
 } 
 
-# Prep: General ----
 # API authentication
 googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 
 # grab article
-article_target = meduza_check %>% 
+# ... ignores where [processed] == TRUE
+# ... ignores where [processed] == NA
+# .... these entries should be debugged
+# .... because some key processing step failed
+article_target = meduza_queue %>% 
   filter(!processed) %>% 
-  slice(3) 
+  slice(1) # take first available
 
-article = paste0("https://meduza.io", 
-                 article_target$link[1]) %>% 
-  rvest::read_html()
+if(nrow(article_target) > 0L){
+  
+  # get article
+  article = paste0("https://meduza.io", 
+                   article_target$link[1]) %>% 
+    rvest::read_html()
+  
+}else{
+  # all queue entries correspond to failed processes
+  stop("Queue: Only episodes with failed processes. Check logs.") # terminate script
+  # else, begin processing
+}
+
 
 # index sections 
 # ... limit to accepted types
@@ -42,9 +62,20 @@ raw.h3 = article %>% html_nodes("h3") %>% html_children() %>% html_text()
 raw.ul = article %>% html_nodes("ul") %>% html_text()
 raw.ol = article %>% html_nodes("ol") %>% html_text()
 
+
+# Prep: Other ----
+update_meduza_queue = function(queue_tib = meduza_queue, article_tib = article_target){
+  queue_tib = queue_tib %>% 
+    filter(link %nin% article_tib$link) %>%
+    bind_rows(., article_tib) 
+  
+  return(queue_tib)
+}
+
+
 # Process: [h3] ----
 # Identify selection targets
-# ... ignore superflous (trailer) matches
+# ... ignore superfluous (trailer) matches
 h3.select = which(raw.h3 != "")
 n = sum(article.sections == "h3")
 h3.select = h3.select[c(1:n)]
@@ -62,7 +93,7 @@ h3.dat = tibble(raw = raw.h3,
                tag = "h3"
 )
 
-# update text encoing to ASCII
+# update text encoding to ASCII
 h3.dat$raw = h3.dat$raw %>% 
   iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT")
 
@@ -327,7 +358,7 @@ blob.footer = paste0("Published on ", article.date, ".") %>%
          ., 
          "</break><emphasis></speak>")
 
-# Prep: Body audio syntehsis clean-up ----
+# Prep: Body audio synthesis clean-up ----
 # Based on [article.sections]
 # ... sections outside "GeneralMaterial-article" block will keep default order of 0
 # .... and are dropped downstream
@@ -475,14 +506,17 @@ output_file_name = article_target$by_line %>% # prep output file name
   gsub(pattern = "\\s+", replacement = "", .) %>% # NO SPACES ALLOWED
   paste0("meduza-", ., ".m4a")
 
+article_target$output_filename[1] = output_file_name # log
+
 output_file_name %>%
   paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
   base::shell(cmd = .) # finally merge
 
 # move
 output_file_name %>% 
-  paste("cd api-out-stage/ && move", ., "../landing/") %>% # move final output file
+  paste("cd api-out-stage/ && move", ., "../landing-meduza/") %>% # move final output file
   shell(cmd = .)
+
 base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
 base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
 
@@ -491,73 +525,195 @@ base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a'
 #   paste("cd input-test/ && move", ., "../exhaust/") %>% # move input file
 #   base::shell(cmd = .)
 
-# # Publish to Castos -----
-# post.url = paste0("http://app.castos.com/api/v2/podcasts/",
-#                   keyring::key_get(service = "castos.meduza-en-vhf.podcast-id"),
-#                   "/episodes"
-#                   )
-# # Make post content
-# # template
-# post.content = "<p>Source: <a href = \"POST_LINK\">POST_LINK</a></p><p>\"POST_CONTENT\"</p>" 
-# 
-# # update
-# post.content = post.content %>% 
-#   gsub(pattern = "(POST_LINK)", 
-#        replacement = paste0("https://meduza.io/", article_target$link[1]), 
-#        x = .) %>% 
-#   gsub(pattern = "(POST_CONTENT)", 
-#        replacement = p.dat$raw[1], 
-#        x = .)
-# 
-# # Make post title
-# post.title = paste0(article_target$by_line[1], ": ",
-#                     trimws(
-#                       str_sub(
-#                         string = article_target$full_title[1],
-#                         start = nchar(article_target$by_line[1]) + 1,
-#                         end = -1L
-#                       )
-#                     ))
-# 
-# # Make post file
-# # post.file_path = system.file(paste0("landing/",
-# #                                    output_file_name))
-# # post.file_path = paste0("file=@", getwd(),
-# #                         "/landing/",
-# #                         output_file_name)
-# 
-# post.file_path = paste0(getwd(),
-#                         "/landing/",
-#                         output_file_name)
-# 
-# # post.file_path = httr::upload_file(post.file_path)
-# 
-# # post.file_con = file(post.file_path, "rb")
-# # 
-# # post.file = base::readBin(con = post.file_con, what = raw())
-# 
-# # Make post request
-# post.query = list(token = keyring::key_get(service = "castos-token"))
-# # post.body = list('form[post_title]' = post.title,
-# #                  'form[post_content]' = post.content,
-# #                  'form[episode_file]' = post.file_path
-# #                  )
-# post.body = list(post_title = post.title,
-#                  post_content = post.content,
-#                  episode_file = post.file_path,
-#                  episode_file = httr::upload_file(post.file_path)
-# )
-# 
-# a = httr::POST(url = post.url, 
-#            query = post.query, 
-#            body = post.body)
-# 
-# # a = httr::GET(url = "http://app.castos.com/api/v2/podcasts/27451/episodes", query = request)
+# Publish Podcast ----
+api_key = keyring::key_get("transistor-api")
 
+# ~~~~~ (1) Create Episode Draft ~~~~~
+req.url = "https://api.transistor.fm/v1/episodes" # API URL
 
+post.title = paste0(article_target$by_line[1], ": ", # pass to request
+                    trimws(
+                      str_sub(
+                        string = article_target$full_title[1],
+                        start = nchar(article_target$by_line[1]) + 1,
+                        end = -1L
+                      )
+                    ))
 
+post.summary = p.dat$raw[1] # pass to request
 
+resp.draft = httr::POST(
+  url = req.url,
+  httr::add_headers("x-api-key" = api_key),
+  query = list(
+    'episode[show_id]' = article_target$show_id[1],
+    'episode[title]' = post.title,
+    'episode[summary]' = post.summary
+    
+  )
+  
+)
 
+# status check and error handling
+if(resp.draft$status_code %in% c(200L, 201L)){
+  
+  # success 
+  article_target$response_draft[1] = list("response" = resp.draft)
+  article_target$episode_id[1] = as.integer(httr::content(resp.draft)$data$id) # store new episode-id value
+  article_target$sucess_draft[1] = TRUE
+  
+}else{
+  # failure
+  article_target$processed[1] = NA # flag for debugging
+  saveRDS(object = update_meduza_queue(), # update processing queue record
+          file = "meduza-processing-queue.rds") 
+  stop("Tranistor.fm: Failed to create episode draft.")
+  
+}
 
+rm(resp.draft, post.title, post.summary, req.url) # clean-up 
 
+# ~~~~~ (2) Create Upload URL ~~~~~
+req.url = "https://api.transistor.fm/v1/episodes/authorize_upload"
+resp.uploadurl = httr::GET(url = req.url, 
+                       httr::add_headers("x-api-key" = api_key),
+                       query = list(
+                         'filename'=output_file_name
+                       )
+                       )
 
+# status check and error handling
+if(resp.uploadurl$status_code %in% c(200L)){
+  # success
+  article_target$response_uploadurl[1] = list("response" = resp.uploadurl)
+  article_target$uploadurl_long[1] = httr::content(resp.uploadurl)[["data"]]$attributes$upload_url
+  article_target$uploadurl_short[1] = article_target$uploadurl_long[1] %>% 
+    str_locate(string = ., 
+               pattern = "=public-read") %>% 
+    .[2] %>% 
+    str_sub(string = article_target$uploadurl_long[1], end = .)
+  article_target$success_uploadurl[1] = TRUE
+  
+}else{
+  
+  # failure
+  article_target$processed[1] = NA # flag for debugging
+  saveRDS(object = update_meduza_queue(), # update processing queue record
+          file = "meduza-processing-queue.rds") 
+  stop("Tranistor.fm: Failed to create upload url.")
+  
+}
+
+rm(req.url, resp.uploadurl)
+
+# ~~~~~ (3) Upload File ~~~~~
+# dev-note: update to use 'httr' and upload_file()
+
+# put request template
+# ... works with base::shell() and base::system()
+# .... BUT not base::system2()
+# .... why? 
+put_request = '
+curl -v -X PUT \
+ -H \"Content-Type: audio/mpeg\" \
+-T {file-path} \
+ "{upload-target-long}"
+' 
+# fill in the blanks
+landing.path = readLines(con = "landing-meduza.path", warn = FALSE) # must be absolute
+
+put_request = sub(pattern = "\\{file-path\\}",
+                  replacement = paste0(landing.path, output_file_name), 
+                  x = put_request)
+
+put_request = sub(pattern = "\\{upload-target-long\\}",
+                  replacement = article_target$uploadurl_long[1],
+                  x = put_request)
+
+put_request = gsub(pattern = "\\\n", "", put_request)
+
+# execute request
+req.upload = system(command = put_request, intern = TRUE)
+
+# status check and error handling
+# ... checks for <Error> tag in response
+# .... no cleaner method since request made through shell and not httr
+if(!any(str_detect(req.upload, "<Error>"))){
+  
+  # success
+  article_target$response_upload[1] = list("response" = req.upload)
+  article_target$success_upload[1] = TRUE
+  
+}else{
+  
+  # failure
+  article_target$processed[1] = NA # flag for debugging
+  saveRDS(object = update_meduza_queue(), # update processing queue record
+          file = "meduza-processing-queue.rds") 
+  stop("Tranistor.fm: Failed to upload file.")
+  
+  
+}
+
+# clean-up
+rm(landing.path, put_request, req.upload)
+
+# ~~~~~ (4) Link Episode and Audio File ~~~~~~
+req.url = "https://api.transistor.fm/v1/episodes/"
+resp.link_audio = httr::PATCH(
+  url = paste0(req.url, article_target$episode_id[1]),
+  httr::add_headers("x-api-key" = api_key),
+  query = list('episode[audio_url]' =  article_target$uploadurl_short[1])
+)
+
+# status check and error handling
+if(resp.link_audio$status_code %in% c(200L)){
+  
+  # success
+  article_target$response_audiolink[1] = list("response" = resp.link_audio)
+  article_target$success_audiolink[1] = TRUE
+  
+}else{
+  
+  # failure
+  article_target$processed[1] = NA # flag for debugging
+  saveRDS(object = update_meduza_queue(), # update processing queue record
+          file = "meduza-processing-queue.rds") 
+  stop("Tranistor.fm: Failed to link audio-file.")
+  
+}
+
+rm(req.url, resp.link_audio)
+
+# ~~~~~ (5) Publish Episode ~~~~~
+req.url = "https://api.transistor.fm/v1/episodes/"
+resp.publish = httr::PATCH(
+  url = paste0(req.url, article_target$episode_id[1], "/publish"),
+  httr::add_headers("x-api-key" = api_key),
+  query = list(
+    'episode[status]' = 'published',
+    'fields[episode][]' = 'status'
+  )
+)
+
+# status check and error handling
+if(resp.publish$status_code %in% c(200L)){
+  
+  # success
+  article_target$response_publish[1] = list("response" = resp.publish)
+  article_target$success_publish[1] = TRUE
+  
+}else{
+  
+  # failure
+  article_target$processed[1] = NA # flag for debugging
+  saveRDS(object = update_meduza_queue(), # update processing queue record
+          file = "meduza-processing-queue.rds") 
+  stop("Tranistor.fm: Failed to publish episode.")
+  
+}
+
+# ~~~~~ (6) Update Queue Record ~~~~~
+article_target$processed[1] = TRUE # final outcome flag
+saveRDS(object = update_meduza_queue(), # update processing queue record
+        file = "meduza-processing-queue.rds") 

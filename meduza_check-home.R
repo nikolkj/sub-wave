@@ -1,6 +1,7 @@
 # Check meduza.io for new articles
 require(tidyverse)
 require(rvest)
+"%nin%" = Negate("%in%")
 
 home = rvest::read_html(x = "https://meduza.io/en") # grab page source
 
@@ -55,45 +56,73 @@ assertthat::assert_that(length(home.links) == length(home.titles.by))
 
 # LOG ----
 # Generate temp log for downstream processing checks
-meduza_check = tibble("link" = home.links,
+meduza_check = tibble(
+              # General Fields 
+              "link" = home.links,
               "by_line" = home.titles.by,
               "full_title" = home.titles.full,
               "ping_time" = Sys.time(),
-              "processed" = FALSE)
+              
+              # Final Outcome Flag
+              "processed" = FALSE, # make NA if downstream processes fail; ignored by process queue
+              
+              # googleLanguageR and API Processes
+              # ...
+              
+              # FFMPEG Processes
+              # ...
+              
+              # Podcast API Processes
+              "show_id" = as.integer(keyring::key_get("transistor-api.meduza.show_id")), # int
+              "episode_id" = 0L, # int
+              
+              "response_draft" = vector(mode = "list", length = length(home.links)), # api response
+              "sucess_draft" = FALSE, # logical, based on api response
+              
+              "response_uploadurl" = vector(mode = "list", length = length(home.links)), # api response
+              "success_uploadurl" = FALSE, #logical, based on api response
+              "uploadurl_long" = NA, # string
+              "uploadurl_short" = NA, # string
+              
+              "response_upload" = vector(mode = "list", length = length(home.links)), # api response
+              "success_upload" = FALSE, #logical, based on api response
+              
+              "response_audiolink" = vector(mode = "list", length = length(home.links)), # api response
+              "success_audiolink" = FALSE, # logical, based on api response
+              
+              "response_publish" = vector(mode = "list", length = length(home.links)), # api response
+              "success_publish" = FALSE, # logical, based on api response
+              
+              # Other
+              "output_filename" = NA # string
+              
+              )
 
-write_rds(x = meduza_check, 
-          file = "meduza-temp.rds")
 
-# # testing 
-# 
-# 
-# 
-# # make sub-titles
-# starts = nchar(home.titles.by) + 1
-# ends = nchar(home.titles.full)
-# home.titles.sub = substr(home.titles.full, 
-#                          start = starts, stop = ends) %>% 
-#   trimws()
-# 
-#   rm(starts, ends) 
-# 
-# trimmed.subtitles = sapply(home.titles.sub, function(x){
-#   # trim subtitles to 35 char or less
-#   # ... then add elipsis
-#   tokens = str_split(x, pattern = "\\s+", simplify = T) # tokenize
-#   
-#   temp = tokens %>% 
-#     nchar() %>% 
-#     cumsum()
-#   
-#   temp = max(which(temp < 35))
-#   temp = paste0(tokens[1:temp], collapse = " ") %>% 
-#     paste(., "...")
-#   
-#   return(temp)
-#     
-# }) %>% unname()
-# 
-# paste0(home.titles.by, ": ", trimmed.subtitles)
+# Compare to Existing Processing Queue
+if(!file.exists("meduza-processing-queue.rds")){
+  
+  # initialize if necessary
+  saveRDS(object = meduza_check, file = "meduza-processing-queue.rds")
+  
+}else{
+  
+  meduza_queue = readRDS(file = "meduza-processing-queue.rds") # read queue
+  meduza_check = meduza_check %>% # check for new entries
+    filter(link %nin% meduza_queue$link)
+  
+  if(nrow(meduza_check) > 0){
+    meduza_queue = bind_rows(meduza_queue, meduza_check) # add entries to processing queue
+    saveRDS(object = meduza_queue, file = "meduza-processing-queue.rds") # save updated queue
+  }
+  
+  
+  
+}
+
+
+# write_rds(x = meduza_check, 
+#           file = "meduza-temp.rds")
+
 
 
