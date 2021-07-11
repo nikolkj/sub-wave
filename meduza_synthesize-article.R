@@ -250,8 +250,8 @@ for(i in seq(nrow(ul.dat))){
   
 }
 
-# Process: [ol]
-# Process: [ul] ----
+
+# Process: [ol] ----
 
 # Identify selection targets
 # ... ignore empties and superflous (trailer) matches
@@ -315,12 +315,13 @@ for(i in seq(nrow(ol.dat))){
   # write output to "api-out-stage/"
   googleLanguageR::gl_talk(input = ol.dat$ssml_encode[i], 
                            inputType = "ssml",
-                           name = "en-US-Wavenet-D", # preferred
+                           name = "en-GB-Wavenet-B", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", ol.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           effectsProfileIds = "headphone-class-device"
+                           speakingRate = 1,
+                           pitch = -6
   )
   
   Sys.sleep(5)
