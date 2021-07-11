@@ -540,7 +540,9 @@ post.title = paste0(article_target$by_line[1], ": ", # pass to request
                       )
                     ))
 
-post.summary = p.dat$raw[1] # pass to request
+post.summary = p.dat$raw[1] %>% # pass to request
+  paste0("<a href = \\", paste0("https://meduza.io", article_target$link[1]), "\">",
+         "SOURCE:", "</a> ", .)
 
 resp.draft = httr::POST(
   url = req.url,
