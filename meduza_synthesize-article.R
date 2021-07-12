@@ -120,12 +120,11 @@ for(i in seq(nrow(h3.dat))){
   # write output to "api-out-stage/"
   googleLanguageR::gl_talk(input = h3.dat$ssml_encode[i], 
                            inputType = "ssml",
-                           # name = "en-US-Wavenet-D", # preferred
-                           name = "en-US-Wavenet-B", # second-best
+                           name = "en-US-Wavenet-D", # preferred
+                           # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", h3.dat$rid[i],
                                            ".wav"),
-                           audioEncoding = "LINEAR16",
-                           effectsProfileIds = "headphone-class-device"
+                           audioEncoding = "LINEAR16"
   )
   
   Sys.sleep(5)
@@ -167,12 +166,16 @@ for(i in seq(nrow(p.dat))){
   # write output to "api-out-stage/"
   googleLanguageR::gl_talk(input = p.dat$ssml_encode[i], 
                            inputType = "ssml",
-                           name = "en-US-Wavenet-D", # preferred
+                           name = "en-GB-Wavenet-B", # preferred
+                           # name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", p.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           effectsProfileIds = "headphone-class-device"
+                           # effectsProfileIds = "headphone-class-device"
+                           speakingRate = 1,
+                           pitch = -6
+                           
   )
   
   Sys.sleep(5)
@@ -238,12 +241,15 @@ for(i in seq(nrow(ul.dat))){
   # write output to "api-out-stage/"
   googleLanguageR::gl_talk(input = ul.dat$ssml_encode[i], 
                            inputType = "ssml",
-                           name = "en-US-Wavenet-D", # preferred
+                           name = "en-GB-Wavenet-B", # preferred
+                           # name = "en-US-Wavenet-D", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", ul.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           effectsProfileIds = "headphone-class-device"
+                           # effectsProfileIds = "headphone-class-device"
+                           speakingRate = 1,
+                           pitch = -6
   )
   
   Sys.sleep(5)
@@ -467,25 +473,25 @@ for(i in seq_along(dat$wav_order)){
 blob.header %>% 
 googleLanguageR::gl_talk(input = ., 
                          inputType = "ssml",
-                         # name = "en-US-Wavenet-D", # preferred
-                         name = "en-US-Wavenet-B", # second-best
+                         name = "en-US-Wavenet-D", # preferred
+                         # name = "en-US-Wavenet-B", # second-best
                          output = paste0("api-out-stage/", 
                                          "000_intro",
                                          ".wav"),
-                         audioEncoding = "LINEAR16",
-                         effectsProfileIds = "headphone-class-device"
+                         audioEncoding = "LINEAR16"
+                         # effectsProfileIds = "headphone-class-device"
 )
 
 blob.footer %>% 
   googleLanguageR::gl_talk(input = ., 
                            inputType = "ssml",
-                           # name = "en-US-Wavenet-D", # preferred
-                           name = "en-US-Wavenet-B", # second-best
+                           name = "en-US-Wavenet-D", # preferred
+                           # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", 
                                            "999_footer",
                                            ".wav"),
-                           audioEncoding = "LINEAR16",
-                           effectsProfileIds = "headphone-class-device"
+                           audioEncoding = "LINEAR16"
+                           # effectsProfileIds = "headphone-class-device"
   )
   
 # Encoding conversions and audio concatenation ----
