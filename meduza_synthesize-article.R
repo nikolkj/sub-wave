@@ -124,7 +124,8 @@ for(i in seq(nrow(h3.dat))){
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", h3.dat$rid[i],
                                            ".wav"),
-                           audioEncoding = "LINEAR16"
+                           audioEncoding = "LINEAR16",
+                           pitch = -5.5
   )
   
   Sys.sleep(5)
@@ -478,7 +479,8 @@ googleLanguageR::gl_talk(input = .,
                          output = paste0("api-out-stage/", 
                                          "000_intro",
                                          ".wav"),
-                         audioEncoding = "LINEAR16"
+                         audioEncoding = "LINEAR16", 
+                         pitch = -5.5 
                          # effectsProfileIds = "headphone-class-device"
 )
 
@@ -490,7 +492,8 @@ blob.footer %>%
                            output = paste0("api-out-stage/", 
                                            "999_footer",
                                            ".wav"),
-                           audioEncoding = "LINEAR16"
+                           audioEncoding = "LINEAR16",
+                           pitch = -5.5 
                            # effectsProfileIds = "headphone-class-device"
   )
   
