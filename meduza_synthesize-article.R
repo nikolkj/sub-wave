@@ -547,9 +547,9 @@ post.title = paste0(article_target$by_line[1], ": ", # pass to request
                       )
                     ))
 
-post.summary = p.dat$raw[1] %>% # pass to request
-  paste0("<a href = \\", paste0("https://meduza.io", article_target$link[1]), "\">",
-         "SOURCE:", "</a> ", .)
+post.summary = p.dat$raw[1] # pass to request
+
+post.description = paste("Original Article:", paste0("https://meduza.io", article_target$link[1]))
 
 resp.draft = httr::POST(
   url = req.url,
@@ -557,7 +557,8 @@ resp.draft = httr::POST(
   query = list(
     'episode[show_id]' = article_target$show_id[1],
     'episode[title]' = post.title,
-    'episode[summary]' = post.summary
+    'episode[summary]' = post.summary,
+    'episode[description]' = post.description
     
   )
   
