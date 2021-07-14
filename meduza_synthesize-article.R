@@ -57,10 +57,10 @@ article.sections = article %>%
 article.sections = article.sections[which(article.sections %in% accpt_sections)] 
 
 # grab sections
-raw.p = article %>% html_nodes("p") %>% html_text()
-raw.h3 = article %>% html_nodes("h3") %>% html_children() %>% html_text() 
-raw.ul = article %>% html_nodes("ul") %>% html_text()
-raw.ol = article %>% html_nodes("ol") %>% html_text()
+raw.p = article %>% html_nodes("p") %>% html_text() %>% trimws()
+raw.h3 = article %>% html_nodes("h3") %>% html_children() %>% html_text() %>% trimws()
+raw.ul = article %>% html_nodes("ul") %>% html_text() %>% trimws()
+raw.ol = article %>% html_nodes("ol") %>% html_text() %>% trimws()
 
 
 # Prep: Other ----
@@ -125,10 +125,10 @@ for(i in seq(nrow(h3.dat))){
                            output = paste0("api-out-stage/", h3.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           pitch = -5.5
+                           pitch = -4.5
   )
   
-  Sys.sleep(5)
+  Sys.sleep(1)
   
 }
 
@@ -179,7 +179,7 @@ for(i in seq(nrow(p.dat))){
                            
   )
   
-  Sys.sleep(5)
+  Sys.sleep(1)
   
 }
 
@@ -187,10 +187,21 @@ for(i in seq(nrow(p.dat))){
 
 # Identify selection targets
 # ... ignore empties and superflous (trailer) matches
+
+# ul.exclude = c("AboutCode of conductAdvertisePrivacy notesCookies",
+#                "FacebookTwitterInstagramRSS")
+# 
+# raw.ul = sapply(raw.ul, function(x) {
+#   x = ifelse(x %in% ul.exclude, "", x) # apply exclusion
+#   return(x)
+# }) %>% unname()
+
 ul.select = which(raw.ul != "")
 n = sum(article.sections == "ul")
 ul.select = ul.select[c(1:n)]
 rm(n)
+
+# ... 
   
 # Re-make raw extract based on selection targe
 raw.ul = article %>% html_nodes("ul") %>% 
@@ -253,7 +264,7 @@ for(i in seq(nrow(ul.dat))){
                            pitch = -6
   )
   
-  Sys.sleep(5)
+  Sys.sleep(1)
   
 }
 
@@ -331,16 +342,18 @@ for(i in seq(nrow(ol.dat))){
                            pitch = -6
   )
   
-  Sys.sleep(5)
+  Sys.sleep(1)
   
 }
 
 # Prep: Blobs ----
 article.author = article %>% 
   html_node("[class='MaterialNote-module_note_caption__1ezSo']") %>% html_text()
+if(is.na(article.author)){article.author = NULL} 
 
 article.translator = article %>% 
-  html_node("[class='MaterialNote-module_note_credit__PuFyX']") %>% html_text()
+  html_node("[class='MaterialNote-module_note_credit__PuFyX']") %>% html_text() 
+if(is.na(article.translator)){article.translator = NULL}
 
 article.ts = article %>% 
   html_node("[class='Timestamp-module_root__coOvT']") %>% 
@@ -350,13 +363,16 @@ article.date = article.ts %>%
   as.Date(x = ., "%H:%M %p, %B %d, %Y") %>% 
   format(x = ., "%B %d, %Y") 
 
-article.by = article_target$by_line
+article.by = ifelse(is.na(article_target$by_line), # handling for NULL  
+                    article_target$full_title,
+                    article_target$by_line)
 
 blob.header = paste0("<emphasis level=\"strong\">", 
                      article.by, ". ",
                      "</emphasis>",
-                     article.author, ". ",
-                     article.translator, ".") %>% 
+                     (if(is.null(article.author)) NULL else {paste0(article.author, ". ")}), # handling for NULL
+                     (if(is.null(article.translator)) NULL else {paste0(article.translator, ". ")}) # handling for NULL
+                     ) %>% 
   iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT") %>% 
   paste0("<speak>", ., "</speak>")
 
@@ -480,7 +496,7 @@ googleLanguageR::gl_talk(input = .,
                                          "000_intro",
                                          ".wav"),
                          audioEncoding = "LINEAR16", 
-                         pitch = -5.5 
+                         pitch = -4.5 
                          # effectsProfileIds = "headphone-class-device"
 )
 
@@ -493,7 +509,7 @@ blob.footer %>%
                                            "999_footer",
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           pitch = -5.5 
+                           pitch = -4.5 
                            # effectsProfileIds = "headphone-class-device"
   )
   
@@ -509,7 +525,9 @@ dir(path = "api-out-stage/", pattern = ".m4a$") %>%
   paste0("file '",.,"'") %>% 
   writeLines(text = ., con = "api-out-stage/ref.txt") # make reference file with targets
 
-output_file_name = article_target$by_line %>% # prep output file name
+output_file_name = ifelse(!is.na(article_target$by_line[1]),
+                          article_target$by_line[1],
+                          article_target$full_title[1]) %>% # prep output file name
   iconv(x = ., from = "UTF-8", to = "ASCII//TRANSLIT") %>% 
   gsub(pattern = "[[:punct:]]", "", .) %>% # NO PUNCT ALLOWED
   stringr::str_to_title() %>%
@@ -550,9 +568,15 @@ post.title = paste0(article_target$by_line[1], ": ", # pass to request
                       )
                     ))
 
+if(is.na(article_target$by_line[1])){
+  post.title = article_target$full_title[1]
+}
+
 post.summary = p.dat$raw[1] # pass to request
 
-post.description = paste("Original Article:", paste0("https://meduza.io", article_target$link[1]))
+post.description = paste(p.dat$raw[1], 
+                         paste("Original Article:", paste0("https://meduza.io", article_target$link[1]))
+)
 
 resp.draft = httr::POST(
   url = req.url,

@@ -5,7 +5,7 @@ require(rvest)
 
 home = rvest::read_html(x = "https://meduza.io/en") # grab page source
 
-# EXTRACTS ----
+# EXTRACT: Feed-block ----
 # grab title-block
 # ... contains title, by-line and article path
 home.titles =  home %>% html_nodes("div.RichBlock-title") 
@@ -19,9 +19,11 @@ home.links = lapply(home.links, function(x){x[2]}) %>% unlist()
 article_positions = grep(pattern = "^/en/feature/", home.links) # pos: which are article links
 home.links = home.links[article_positions]
 
-# exract full titles
+
+# extract full titles
 home.titles.full =  home.titles %>% html_text()
 home.titles.full = home.titles.full[article_positions]
+rm(article_positions)
 
 # extract by-lines
 home.titles.by = home.titles %>%
@@ -54,13 +56,42 @@ rm(match_titles, match_titles.drop)
 assertthat::assert_that(length(home.links) == length(home.titles.full))
 assertthat::assert_that(length(home.links) == length(home.titles.by))
 
+# EXTRACT: Feed-groupItem ----
+news.titles = home %>% html_nodes("div.SimpleBlock-content")
+news.links = news.titles %>% 
+  html_nodes("a") %>% 
+  html_attrs()
+
+news.links = lapply(news.links, function(x){x[2]}) %>% unlist()
+article_positions = grep("^/en/news/", news.links)
+news.links = news.links[article_positions]
+
+
+# extract full titles
+news.titles.full = news.titles %>% html_text()
+news.titles.full = news.titles.full[article_positions]
+rm(article_positions)
+
+news.titles.by = rep(NA, length(news.titles.full))
+
+# check extract lengths
+assertthat::assert_that(length(news.links) == length(news.titles.full))
+assertthat::assert_that(length(news.links) == length(news.titles.by))
+
+
+# Combine Elements ----
+extract.links = c(home.links, news.links)
+extract.titles.full = c(home.titles.full, news.titles.full)
+extract.titles.by = c(home.titles.by, news.titles.by)
+
+
 # LOG ----
 # Generate temp log for downstream processing checks
 meduza_check = tibble(
               # General Fields 
-              "link" = home.links,
-              "by_line" = home.titles.by,
-              "full_title" = home.titles.full,
+              "link" = extract.links,
+              "by_line" = extract.titles.by,
+              "full_title" = extract.titles.full,
               "ping_time" = Sys.time(),
               
               # Final Outcome Flag
@@ -76,21 +107,21 @@ meduza_check = tibble(
               "show_id" = as.integer(keyring::key_get("transistor-api.meduza.show_id")), # int
               "episode_id" = 0L, # int
               
-              "response_draft" = vector(mode = "list", length = length(home.links)), # api response
+              "response_draft" = vector(mode = "list", length = length(extract.links)), # api response
               "sucess_draft" = FALSE, # logical, based on api response
               
-              "response_uploadurl" = vector(mode = "list", length = length(home.links)), # api response
+              "response_uploadurl" = vector(mode = "list", length = length(extract.links)), # api response
               "success_uploadurl" = FALSE, #logical, based on api response
               "uploadurl_long" = NA, # string
               "uploadurl_short" = NA, # string
               
-              "response_upload" = vector(mode = "list", length = length(home.links)), # api response
+              "response_upload" = vector(mode = "list", length = length(extract.links)), # api response
               "success_upload" = FALSE, #logical, based on api response
               
-              "response_audiolink" = vector(mode = "list", length = length(home.links)), # api response
+              "response_audiolink" = vector(mode = "list", length = length(extract.links)), # api response
               "success_audiolink" = FALSE, # logical, based on api response
               
-              "response_publish" = vector(mode = "list", length = length(home.links)), # api response
+              "response_publish" = vector(mode = "list", length = length(extract.links)), # api response
               "success_publish" = FALSE, # logical, based on api response
               
               # Other
