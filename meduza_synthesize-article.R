@@ -7,6 +7,8 @@ require(tidyverse)
 require(rvest)
 "%nin%" = Negate("%in%")
 
+param_testing = FALSE # set to false
+
 # Prep: General ----
 
 # get processing queue 
@@ -125,10 +127,11 @@ for(i in seq(nrow(h3.dat))){
                            output = paste0("api-out-stage/", h3.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           pitch = -4.5
+                           pitch = -4.5,
+                           sampleRateHertz = 48000
   )
   
-  Sys.sleep(1)
+  Sys.sleep(2L)
   
 }
 
@@ -175,34 +178,22 @@ for(i in seq(nrow(p.dat))){
                            audioEncoding = "LINEAR16",
                            # effectsProfileIds = "headphone-class-device"
                            speakingRate = 1,
-                           pitch = -6
+                           pitch = -6,
+                           sampleRateHertz = 48000
                            
   )
   
-  Sys.sleep(1)
+  Sys.sleep(2L)
   
 }
 
 # Process: [ul] ----
-
-# Identify selection targets
-# ... ignore empties and superflous (trailer) matches
-
-# ul.exclude = c("AboutCode of conductAdvertisePrivacy notesCookies",
-#                "FacebookTwitterInstagramRSS")
-# 
-# raw.ul = sapply(raw.ul, function(x) {
-#   x = ifelse(x %in% ul.exclude, "", x) # apply exclusion
-#   return(x)
-# }) %>% unname()
 
 ul.select = which(raw.ul != "")
 n = sum(article.sections == "ul")
 ul.select = ul.select[c(1:n)]
 rm(n)
 
-# ... 
-  
 # Re-make raw extract based on selection targe
 raw.ul = article %>% html_nodes("ul") %>% 
   lapply(., function(x) {
@@ -261,10 +252,11 @@ for(i in seq(nrow(ul.dat))){
                            audioEncoding = "LINEAR16",
                            # effectsProfileIds = "headphone-class-device"
                            speakingRate = 1,
-                           pitch = -6
+                           pitch = -6,
+                           sampleRateHertz = 48000
   )
   
-  Sys.sleep(1)
+  Sys.sleep(2L)
   
 }
 
@@ -339,10 +331,11 @@ for(i in seq(nrow(ol.dat))){
                                            ".wav"),
                            audioEncoding = "LINEAR16",
                            speakingRate = 1,
-                           pitch = -6
+                           pitch = -6,
+                           sampleRateHertz = 48000
   )
   
-  Sys.sleep(1)
+  Sys.sleep(2L)
   
 }
 
@@ -456,66 +449,46 @@ for(i in seq_along(dat$wav_order)){
   
 }
 
-# # special case handing, do not run
-# # ... sections outside "GeneralMaterial-article" block will keep default order of 0
-# # .... sequence by original order or, where applicable, drop 
-# 
-# # h3 - leave at zero; will be deleted downstream
-# 
-# # p - assign negative value, brings to front
-# p.dat$wav_order[which(p.dat$wav_order == 0)] = c(-100 : (-100 + sum(p.dat$wav_order == 0))) # bring to front
-# 
-# 
-# 
-# # rm(h3.dat, p.dat)
-# 
-# # rename synethetic audio files for m4a conv and audio concat
-# dat = dat %>% 
-#   mutate(new_filename = paste0(wav_order, "_", rid, ".wav")) %>% 
-#   arrange(new_filename)
-# 
-# for(i in seq_along(dat$wav_order)){
-#   
-#   if(dat$wav_order[i] == 0){
-#     # remove any files that still have [wav_order] = 0
-#     file.remove(paste0("api-out-stage/",
-#                        dat$rid[i], ".wav")
-#                 )
-#   }else{
-#     
-#   }
-#   
-  
 # Prep: Blob Encoding ----
 blob.header %>% 
 googleLanguageR::gl_talk(input = ., 
                          inputType = "ssml",
-                         name = "en-US-Wavenet-D", # preferred
+                         name = "en-GB-Wavenet-B", # preferred
                          # name = "en-US-Wavenet-B", # second-best
                          output = paste0("api-out-stage/", 
                                          "000_intro",
                                          ".wav"),
                          audioEncoding = "LINEAR16", 
-                         pitch = -4.5 
-                         # effectsProfileIds = "headphone-class-device"
+                         pitch = -6 ,
+                         sampleRateHertz = 48000
+                         
 )
 
 blob.footer %>% 
   googleLanguageR::gl_talk(input = ., 
                            inputType = "ssml",
-                           name = "en-US-Wavenet-D", # preferred
+                           name = "en-GB-Wavenet-B", # preferred
                            # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", 
                                            "999_footer",
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           pitch = -4.5 
-                           # effectsProfileIds = "headphone-class-device"
+                           pitch = -6,
+                           sampleRateHertz = 48000 
+                           
   )
   
 # Encoding conversions and audio concatenation ----
 # Convert WAV to m4a
-# ... dump to "convert-stage/" dir
+# ... dump to "api-out-stage/" dir
+
+# apply equilizer
+# ... e.g. ffmpeg -i input.wav -af "equalizer=f=200:width_type=o:width=2:g=4,equalizer=f=3000:width_type=o:width=2:g=2" output.wav
+# ... should be applied in for-loop
+# ... e.g. 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO (ffmpeg eq)'
+# .... where input & output ~ "%G"
+# .... add overwrite default yes
+
 
 # convert wav files to m4a 
 base::shell(cmd = 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO ffmpeg.exe -i "%G" "%~nG.m4a"')
@@ -539,6 +512,10 @@ article_target$output_filename[1] = output_file_name # log
 output_file_name %>%
   paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
   base::shell(cmd = .) # finally merge
+
+if(param_testing){
+  stop("See files in api-out-stage/")
+}
 
 # move
 output_file_name %>% 
