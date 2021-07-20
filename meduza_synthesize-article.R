@@ -122,12 +122,11 @@ for(i in seq(nrow(h3.dat))){
   # write output to "api-out-stage/"
   googleLanguageR::gl_talk(input = h3.dat$ssml_encode[i], 
                            inputType = "ssml",
-                           name = "en-US-Wavenet-D", # preferred
-                           # name = "en-US-Wavenet-B", # second-best
+                           name = "en-GB-Wavenet-B", # preferred
                            output = paste0("api-out-stage/", h3.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           pitch = -4.5,
+                           pitch = -6,
                            sampleRateHertz = 48000
   )
   
@@ -171,12 +170,9 @@ for(i in seq(nrow(p.dat))){
   googleLanguageR::gl_talk(input = p.dat$ssml_encode[i], 
                            inputType = "ssml",
                            name = "en-GB-Wavenet-B", # preferred
-                           # name = "en-US-Wavenet-D", # preferred
-                           # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", p.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           # effectsProfileIds = "headphone-class-device"
                            speakingRate = 1,
                            pitch = -6,
                            sampleRateHertz = 48000
@@ -245,12 +241,9 @@ for(i in seq(nrow(ul.dat))){
   googleLanguageR::gl_talk(input = ul.dat$ssml_encode[i], 
                            inputType = "ssml",
                            name = "en-GB-Wavenet-B", # preferred
-                           # name = "en-US-Wavenet-D", # preferred
-                           # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", ul.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           # effectsProfileIds = "headphone-class-device"
                            speakingRate = 1,
                            pitch = -6,
                            sampleRateHertz = 48000
@@ -326,7 +319,6 @@ for(i in seq(nrow(ol.dat))){
   googleLanguageR::gl_talk(input = ol.dat$ssml_encode[i], 
                            inputType = "ssml",
                            name = "en-GB-Wavenet-B", # preferred
-                           # name = "en-US-Wavenet-B", # second-best
                            output = paste0("api-out-stage/", ol.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
