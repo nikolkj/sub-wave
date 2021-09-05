@@ -1,6 +1,8 @@
+#!/usr/bin/Rscript
+
 # Check meduza.io for new articles
 suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
-require(rvest)
+require(rvest, quietly = TRUE)
 "%nin%" = Negate("%in%")
 
 home = rvest::read_html(x = "https://meduza.io/en") # grab page source
@@ -149,10 +151,4 @@ if(!file.exists("meduza-processing-queue.rds")){
   
   
 }
-
-
-# write_rds(x = meduza_check, 
-#           file = "meduza-temp.rds")
-
-
 

@@ -1,3 +1,4 @@
+#!/usr/bin/Rscript
 # ABOUT: Generate synthetic voice encoding for meduza articles
 
 # PRE-REQS:
@@ -770,3 +771,4 @@ if(resp.publish$status_code %in% c(200L)){
 article_target$processed[1] = TRUE # final outcome flag
 saveRDS(object = update_meduza_queue(), # update processing queue record
         file = "meduza-processing-queue.rds") 
+
