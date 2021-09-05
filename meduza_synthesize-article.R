@@ -85,6 +85,8 @@ rm(n)
 
 # Update raw-extract
 raw.h3 = raw.h3[h3.select]
+if(is.na(raw.h3) & length(raw.h3) == 1){raw.h3 = ""}
+
 assertthat::assert_that(!any(is.na(raw.h3))) # check for expected number, length(raw) = n & no NA
 
 
@@ -173,7 +175,7 @@ for(i in seq(nrow(p.dat))){
                            output = paste0("api-out-stage/", p.dat$rid[i],
                                            ".wav"),
                            audioEncoding = "LINEAR16",
-                           speakingRate = 1,
+                           speakingRate = 0.96,
                            pitch = -6,
                            sampleRateHertz = 48000
                            
@@ -483,7 +485,14 @@ blob.footer %>%
 
 
 # convert wav files to m4a 
-base::shell(cmd = 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO ffmpeg.exe -i "%G" "%~nG.m4a"')
+if(Sys.info()[1] == "Windows"){
+  base::shell(cmd = 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO ffmpeg.exe -i "%G" "%~nG.m4a"',  wait = TRUE)
+}else if (Sys.info()[1] == "Linux"){
+  # system2 equiv
+}else{
+  stop("Unrecognized OS details. Can't run FFMPEG.")
+}
+
 
 # merge converted m4a files
 dir(path = "api-out-stage/", pattern = ".m4a$") %>% 
@@ -501,21 +510,33 @@ output_file_name = ifelse(!is.na(article_target$by_line[1]),
 
 article_target$output_filename[1] = output_file_name # log
 
+if(Sys.info()[1] == "Windows"){
 output_file_name %>%
   paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
   base::shell(cmd = .) # finally merge
+}else if(Sys.info()[1] == "Linux"){
+  #equiv System2
+}else{
+  stop("error msg.")
+}
 
 if(param_testing){
   stop("See files in api-out-stage/")
 }
 
 # move
+if(Sys.info()[1] == "Windows"){
 output_file_name %>% 
   paste("cd api-out-stage/ && move", ., "../landing-meduza/") %>% # move final output file
   shell(cmd = .)
+  
+  base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
+  base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
+  
+}else{
+  # equiv System2 call
+}
 
-base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
-base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
 
 # dat$new_filename %>%
 #   paste0('"',.,'"') %>%
