@@ -1,5 +1,5 @@
 # Check meduza.io for new articles
-require(tidyverse)
+suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
 require(rvest)
 "%nin%" = Negate("%in%")
 
@@ -65,7 +65,6 @@ news.links = news.titles %>%
 news.links = lapply(news.links, function(x){x[2]}) %>% unlist()
 article_positions = grep("^/en/news/", news.links)
 news.links = news.links[article_positions]
-
 
 # extract full titles
 news.titles.full = news.titles %>% html_text()
