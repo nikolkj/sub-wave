@@ -9,7 +9,7 @@ suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
 require(rvest, quietly = TRUE)
 "%nin%" = Negate("%in%")
 
-param_testing = TRUE # set to false
+param_testing = FALSE # set to false
 
 # Prep: General ----
 
@@ -527,7 +527,7 @@ output_file_name %>%
 }
 
 if(param_testing){
-  stop("See files in api-out-stage/")
+  stop("[param_testing] TRUE; See files in api-out-stage/")
 }
 
 # move
@@ -542,11 +542,11 @@ output_file_name %>%
 }else if(Sys.info()[1] == "Linux"){
   # move final output file
   output_file_name %>% 
-    paste("cd api-out-stage/ && mv", ., "../landing-meduza/") %>% # move final output file
+    paste("cd api-out-stage/ && mv -f", ., "../landing-meduza/") %>% # move final output file
     system(command = .)
   
-  system(command = "cd api-out-stage/ && mv *.wav ../exhaust/") # move original API wav output
-  system(command = "cd api-out-stage/ && mv *.m4a ../exhaust/") # move converted m4a's
+  system(command = "cd api-out-stage/ && mv -f *.wav ../exhaust/") # move original API wav output
+  system(command = "cd api-out-stage/ && mv -f *.m4a ../exhaust/") # move converted m4a's
   
 }else{
   stop("error msg.")

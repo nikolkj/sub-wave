@@ -38,4 +38,9 @@ if(system_info[i] == 'Linux'){
   
 }
 
-
+if(system_info[i] == 'Linux'){
+  # assumes debian-based, e.g. ubuntu, pop-os
+  assertthat::assert_that("ffmpeg_conv.sh" %in% dir(),
+    msg = "You're missing a file: ffmpeg_conv.sh")
+  
+}
