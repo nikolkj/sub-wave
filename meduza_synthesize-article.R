@@ -1,13 +1,15 @@
 # ABOUT: Generate synthetic voice encoding for meduza articles
-# ...
+
+# PRE-REQS:
+# 1) api_key = keyring::key_get("transistor-api") must be set. Transitor.fm API key;
 
 # Start-up ----
 rm(list = ls())
-require(tidyverse)
-require(rvest)
+suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
+require(rvest, quietly = TRUE)
 "%nin%" = Negate("%in%")
 
-param_testing = FALSE # set to false
+param_testing = TRUE # set to false
 
 # Prep: General ----
 
@@ -489,6 +491,8 @@ if(Sys.info()[1] == "Windows"){
   base::shell(cmd = 'cd api-out-stage\\\ && FOR /F "tokens=*" %G IN (\'dir /b *.wav\') DO ffmpeg.exe -i "%G" "%~nG.m4a"',  wait = TRUE)
 }else if (Sys.info()[1] == "Linux"){
   # system2 equiv
+  base::system(command = 'sh ffmpeg_conv.sh')
+  
 }else{
   stop("Unrecognized OS details. Can't run FFMPEG.")
 }
@@ -515,7 +519,9 @@ output_file_name %>%
   paste("cd api-out-stage/ && ffmpeg.exe -f concat -safe 0 -i ref.txt -c copy", .) %>%
   base::shell(cmd = .) # finally merge
 }else if(Sys.info()[1] == "Linux"){
-  #equiv System2
+  output_file_name %>%
+    paste("cd api-out-stage/ && ffmpeg -f concat -safe 0 -i ref.txt -c copy", .) %>% 
+    system(command = .)
 }else{
   stop("error msg.")
 }
@@ -533,8 +539,17 @@ output_file_name %>%
   base::shell("cd api-out-stage/ && move *.wav ../exhaust/") # move original API wav output
   base::shell("cd api-out-stage/ && move *.m4a ../exhaust/") # move converted m4a's
   
+}else if(Sys.info()[1] == "Linux"){
+  # move final output file
+  output_file_name %>% 
+    paste("cd api-out-stage/ && mv", ., "../landing-meduza/") %>% # move final output file
+    system(command = .)
+  
+  system(command = "cd api-out-stage/ && mv *.wav ../exhaust/") # move original API wav output
+  system(command = "cd api-out-stage/ && mv *.m4a ../exhaust/") # move converted m4a's
+  
 }else{
-  # equiv System2 call
+  stop("error msg.")
 }
 
 
@@ -647,7 +662,18 @@ curl -v -X PUT \
  "{upload-target-long}"
 ' 
 # fill in the blanks
-landing.path = readLines(con = "landing-meduza.path", warn = FALSE) # must be absolute
+if(Sys.info()[1] == "Windows"){
+  
+  landing.path = readLines(con = "landing-meduza.path", warn = FALSE) # must be absolute
+  
+}else if(Sys.info()[1] == "Linux"){
+  
+  landing.path = system(command = "realpath landing-meduza/", intern = TRUE) %>% 
+    paste0(., "/")
+  
+}else{
+  stop("error msg.")
+}
 
 put_request = sub(pattern = "\\{file-path\\}",
                   replacement = paste0(landing.path, output_file_name), 
