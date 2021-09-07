@@ -1,6 +1,7 @@
 #!/usr/bin/Rscript
 
 # Check meduza.io for new articles
+rm(list = ls())
 suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
 require(rvest, quietly = TRUE)
 "%nin%" = Negate("%in%")
