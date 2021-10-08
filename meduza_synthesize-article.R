@@ -84,11 +84,15 @@ update_meduza_queue = function(queue_tib = meduza_queue, article_tib = article_t
 h3.select = which(raw.h3 != "")
 n = sum(article.sections == "h3")
 h3.select = h3.select[c(1:n)]
+h3.select = ifelse(length(raw.h3) == 0L, yes = NA, no = h3.select)
 rm(n)
 
 # Update raw-extract
 raw.h3 = raw.h3[h3.select]
-if(is.na(raw.h3) & length(raw.h3) == 1){raw.h3 = ""}
+if((all(is.na(raw.h3)) & length(raw.h3) == 1) 
+   ){
+  raw.h3 = ""
+  }
 
 assertthat::assert_that(!any(is.na(raw.h3))) # check for expected number, length(raw) = n & no NA
 
@@ -383,6 +387,11 @@ itt.ol = 1
 
 for(i in seq_along(article.sections)){
   if(article.sections[i] == "h3"){
+    
+    if(itt.h3 > nrow(h3.dat)){
+      next
+    }
+    
     h3.dat$wav_order[itt.h3] = i
     itt.h3 = itt.h3 + 1
     
