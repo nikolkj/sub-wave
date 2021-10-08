@@ -50,9 +50,11 @@ home.titles.by = home.titles.by[-which(is.na(match_titles))] # drop invalid by-l
 
 match_titles.drop = setdiff(c(1:length(home.titles.full)), # find invalid full titles & links
                             match_titles)
+
+if(length(match_titles.drop) > 0){
 home.links = home.links[-match_titles.drop] # drop invalid entries
 home.titles.full = home.titles.full[-match_titles.drop] # drop invalid entries
-
+}
 rm(match_titles, match_titles.drop)
 
 # check extract lengths
