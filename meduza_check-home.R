@@ -108,7 +108,7 @@ meduza_check = tibble(
               # ...
               
               # Podcast API Processes
-              "show_id" = as.integer(keyring::key_get("transistor-api.meduza.show_id")), # int
+              "show_id" = as.integer(local.get_key("transistor-api.meduza.show_id")), # int
               "episode_id" = 0L, # int
               
               "response_draft" = vector(mode = "list", length = length(extract.links)), # api response

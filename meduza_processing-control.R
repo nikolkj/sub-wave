@@ -1,4 +1,5 @@
 #!/usr/bin/Rscript
+source(file = "sec_auth.R")
 source(file = "meduza_check-home.R") # check home page, update queue
 
 check_queue = readRDS(file = "meduza-processing-queue.rds") # get updated queue

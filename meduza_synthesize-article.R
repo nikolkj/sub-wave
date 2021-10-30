@@ -569,7 +569,7 @@ output_file_name %>%
 #   base::shell(cmd = .)
 
 # Publish Podcast ----
-api_key = keyring::key_get("transistor-api")
+api_key = local.get_key("transistor-api")
 
 # ~~~~~ (1) Create Episode Draft ~~~~~
 req.url = "https://api.transistor.fm/v1/episodes" # API URL
