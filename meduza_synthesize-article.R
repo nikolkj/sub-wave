@@ -6,6 +6,7 @@
 
 # Start-up ----
 rm(list = ls())
+source(file = "sec_auth.R")
 suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
 require(rvest, quietly = TRUE)
 "%nin%" = Negate("%in%")
@@ -31,7 +32,8 @@ googleLanguageR::gl_auth(json_file = "sub-wave-1342c1e4cfc4.json")
 # .... these entries should be debugged
 # .... because some key processing step failed
 article_target = meduza_queue %>% 
-  filter(!processed) %>% 
+  filter(!is.na(processed)) %>% # skip articles with processing issues
+  filter(!processed) %>% # skip processed articles
   slice(1) # take first available
 
 if(nrow(article_target) > 0L){
