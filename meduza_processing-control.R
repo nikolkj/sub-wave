@@ -6,6 +6,7 @@ source(file = "meduza_check-home.R") # check home page, update queue
 check_queue = readRDS(file = "meduza-processing-queue.rds") # get updated queue
 # View(check_queue)
 check_queue = check_queue$processed
+warning(paste("Files to process:", sum(!check_queue, na.rm = TRUE)))
 
 
 while(FALSE %in% check_queue){

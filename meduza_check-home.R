@@ -4,7 +4,7 @@
 rm(list = ls())
 source(file = "sec_auth.R")
 suppressPackageStartupMessages(require(tidyverse, quietly = TRUE))
-require(rvest, quietly = TRUE)
+suppressPackageStartupMessages(require(rvest, quietly = TRUE))
 "%nin%" = Negate("%in%")
 
 home = rvest::read_html(x = "https://meduza.io/en") # grab page source
